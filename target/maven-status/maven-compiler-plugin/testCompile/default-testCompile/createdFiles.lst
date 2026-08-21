@@ -1,0 +1,4 @@
+com\keymanagement\service\KeyManagementServiceTest.class
+com\keymanagement\service\KeyStorageServiceTest.class
+com\keymanagement\service\CryptoServiceTest.class
+com\keymanagement\controller\KeyManagementControllerTest.class
