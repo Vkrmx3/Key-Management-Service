@@ -3,6 +3,8 @@ package com.keymanagement.service;
 import com.keymanagement.exception.DecryptionException;
 import com.keymanagement.exception.EncryptionException;
 import com.keymanagement.model.EncryptedData;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import javax.crypto.Cipher;
@@ -19,6 +21,7 @@ import java.security.SecureRandom;
 @Service
 public class CryptoService {
 
+    private static final Logger log = LoggerFactory.getLogger(CryptoService.class);
     private static final String ALGORITHM = "AES";
     private static final String TRANSFORMATION = "AES/GCM/NoPadding";
     private static final int KEY_SIZE = 256; // AES-256
@@ -29,6 +32,8 @@ public class CryptoService {
 
     public CryptoService() {
         this.secureRandom = new SecureRandom();
+        log.info("CryptoService initialized with AES-256-GCM (key size: {} bits, nonce size: {} bytes, tag size: {} bits)", 
+                KEY_SIZE, NONCE_SIZE, TAG_SIZE);
     }
 
     /**
@@ -38,10 +43,14 @@ public class CryptoService {
      */
     public SecretKey generateKey() {
         try {
+            log.debug("Generating new AES-{} key", KEY_SIZE);
             KeyGenerator keyGenerator = KeyGenerator.getInstance(ALGORITHM);
             keyGenerator.init(KEY_SIZE, secureRandom);
-            return keyGenerator.generateKey();
+            SecretKey key = keyGenerator.generateKey();
+            log.debug("Successfully generated new AES-{} key", KEY_SIZE);
+            return key;
         } catch (NoSuchAlgorithmException e) {
+            log.error("Failed to generate key: algorithm not found", e);
             throw new EncryptionException("Failed to generate key", e);
         }
     }
@@ -67,9 +76,11 @@ public class CryptoService {
             // Encrypt the plaintext
             byte[] ciphertext = cipher.doFinal(plaintext);
 
+            log.debug("Encryption operation completed successfully");
             return new EncryptedData(ciphertext, nonce);
         } catch (Exception e) {
             // Never log the plaintext or key in the error message
+            log.error("Encryption operation failed", e);
             throw new EncryptionException("Encryption operation failed", e);
         }
     }
@@ -90,9 +101,12 @@ public class CryptoService {
             cipher.init(Cipher.DECRYPT_MODE, key, parameterSpec);
 
             // Decrypt the ciphertext (GCM will verify the authentication tag)
-            return cipher.doFinal(ciphertext);
+            byte[] plaintext = cipher.doFinal(ciphertext);
+            log.debug("Decryption operation completed successfully");
+            return plaintext;
         } catch (Exception e) {
             // Never log the ciphertext, key, or nonce in the error message
+            log.error("Decryption operation failed - possible tampering or incorrect key/nonce", e);
             throw new DecryptionException("Decryption operation failed", e);
         }
     }

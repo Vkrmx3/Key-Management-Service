@@ -1,6 +1,8 @@
 package com.keymanagement.service;
 
 import com.keymanagement.model.EncryptedData;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
@@ -14,12 +16,14 @@ import java.util.Base64;
 @Service
 public class KeyManagementService {
 
+    private static final Logger log = LoggerFactory.getLogger(KeyManagementService.class);
     private final CryptoService cryptoService;
     private final KeyStorageService keyStorageService;
 
     public KeyManagementService(CryptoService cryptoService, KeyStorageService keyStorageService) {
         this.cryptoService = cryptoService;
         this.keyStorageService = keyStorageService;
+        log.info("KeyManagementService initialized");
     }
 
     /**
@@ -28,8 +32,11 @@ public class KeyManagementService {
      * @return The unique identifier for the created key
      */
     public String createKey() {
+        log.debug("Creating new encryption key");
         SecretKey key = cryptoService.generateKey();
-        return keyStorageService.storeKey(key);
+        String keyId = keyStorageService.storeKey(key);
+        log.debug("New key created and stored with ID: {}", keyId);
+        return keyId;
     }
 
     /**
@@ -40,9 +47,12 @@ public class KeyManagementService {
      * @return EncryptedData containing ciphertext and nonce
      */
     public EncryptedData encryptData(String keyId, String plaintext) {
+        log.debug("Encrypting data with key ID: {}", keyId);
         SecretKey key = keyStorageService.getKey(keyId);
         byte[] plaintextBytes = plaintext.getBytes(StandardCharsets.UTF_8);
-        return cryptoService.encrypt(key, plaintextBytes);
+        EncryptedData encryptedData = cryptoService.encrypt(key, plaintextBytes);
+        log.debug("Data encrypted successfully with key ID: {}", keyId);
+        return encryptedData;
     }
 
     /**
@@ -54,10 +64,12 @@ public class KeyManagementService {
      * @return The decrypted plaintext string
      */
     public String decryptData(String keyId, String ciphertextB64, String nonceB64) {
+        log.debug("Decrypting data with key ID: {}", keyId);
         SecretKey key = keyStorageService.getKey(keyId);
         byte[] ciphertext = Base64.getDecoder().decode(ciphertextB64);
         byte[] nonce = Base64.getDecoder().decode(nonceB64);
         byte[] plaintextBytes = cryptoService.decrypt(key, ciphertext, nonce);
+        log.debug("Data decrypted successfully with key ID: {}", keyId);
         return new String(plaintextBytes, StandardCharsets.UTF_8);
     }
 }

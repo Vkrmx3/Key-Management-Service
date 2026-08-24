@@ -1,6 +1,8 @@
 package com.keymanagement.service;
 
 import com.keymanagement.exception.KeyNotFoundException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
@@ -16,10 +18,12 @@ import java.util.concurrent.ConcurrentHashMap;
 @Service
 public class KeyStorageService {
 
+    private static final Logger log = LoggerFactory.getLogger(KeyStorageService.class);
     private final ConcurrentHashMap<String, SecretKey> keyStore;
 
     public KeyStorageService() {
         this.keyStore = new ConcurrentHashMap<>();
+        log.info("KeyStorageService initialized with in-memory storage");
     }
 
     /**
@@ -31,6 +35,7 @@ public class KeyStorageService {
     public String storeKey(SecretKey key) {
         String keyId = UUID.randomUUID().toString();
         keyStore.put(keyId, key);
+        log.debug("Key stored with ID: {}. Total keys in storage: {}", keyId, keyStore.size());
         return keyId;
     }
 
@@ -42,8 +47,12 @@ public class KeyStorageService {
      * @throws KeyNotFoundException if the key does not exist
      */
     public SecretKey getKey(String keyId) {
+        log.debug("Retrieving key with ID: {}", keyId);
         return Optional.ofNullable(keyStore.get(keyId))
-                .orElseThrow(() -> new KeyNotFoundException(keyId));
+                .orElseThrow(() -> {
+                    log.warn("Key not found: {}", keyId);
+                    return new KeyNotFoundException(keyId);
+                });
     }
 
     /**
@@ -63,7 +72,13 @@ public class KeyStorageService {
      * @return true if the key was removed, false if it didn't exist
      */
     public boolean removeKey(String keyId) {
-        return keyStore.remove(keyId) != null;
+        boolean removed = keyStore.remove(keyId) != null;
+        if (removed) {
+            log.debug("Key removed: {}. Remaining keys: {}", keyId, keyStore.size());
+        } else {
+            log.debug("Attempted to remove non-existent key: {}", keyId);
+        }
+        return removed;
     }
 
     /**
@@ -80,6 +95,8 @@ public class KeyStorageService {
      * Primarily useful for testing.
      */
     public void clearAll() {
+        int count = keyStore.size();
         keyStore.clear();
+        log.info("Cleared all keys from storage. {} keys removed", count);
     }
 }
