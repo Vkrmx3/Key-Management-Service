@@ -1,29 +1,30 @@
 package com.keymanagement.service;
 
+import com.keymanagement.entity.KeyEntity;
 import com.keymanagement.exception.KeyNotFoundException;
+import com.keymanagement.repository.KeyRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import javax.crypto.SecretKey;
-import java.util.Optional;
+import javax.crypto.spec.SecretKeySpec;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Service for storing and retrieving encryption keys in memory.
- * Uses ConcurrentHashMap for thread-safe in-memory storage.
- * Keys are identified by UUID strings.
+ * Service for storing and retrieving encryption keys in PostgreSQL database.
+ * Keys are persisted with metadata including creation timestamp and status.
  */
 @Service
 public class KeyStorageService {
 
     private static final Logger log = LoggerFactory.getLogger(KeyStorageService.class);
-    private final ConcurrentHashMap<String, SecretKey> keyStore;
+    private final KeyRepository keyRepository;
 
-    public KeyStorageService() {
-        this.keyStore = new ConcurrentHashMap<>();
-        log.info("KeyStorageService initialized with in-memory storage");
+    public KeyStorageService(KeyRepository keyRepository) {
+        this.keyRepository = keyRepository;
+        log.info("KeyStorageService initialized with PostgreSQL database persistence");
     }
 
     /**
@@ -32,10 +33,20 @@ public class KeyStorageService {
      * @param key The SecretKey to store
      * @return The UUID string identifier for the stored key
      */
+    @Transactional
     public String storeKey(SecretKey key) {
         String keyId = UUID.randomUUID().toString();
-        keyStore.put(keyId, key);
-        log.debug("Key stored with ID: {}. Total keys in storage: {}", keyId, keyStore.size());
+        
+        KeyEntity keyEntity = new KeyEntity(
+                keyId,
+                key.getEncoded(),
+                key.getAlgorithm(),
+                key.getEncoded().length * 8 // key size in bits
+        );
+        
+        keyRepository.save(keyEntity);
+        long totalKeys = keyRepository.countByActiveTrue();
+        log.debug("Key stored with ID: {}. Total active keys in database: {}", keyId, totalKeys);
         return keyId;
     }
 
@@ -46,57 +57,71 @@ public class KeyStorageService {
      * @return The SecretKey associated with the keyId
      * @throws KeyNotFoundException if the key does not exist
      */
+    @Transactional(readOnly = true)
     public SecretKey getKey(String keyId) {
         log.debug("Retrieving key with ID: {}", keyId);
-        return Optional.ofNullable(keyStore.get(keyId))
+        KeyEntity keyEntity = keyRepository.findByKeyIdAndActiveTrue(keyId)
                 .orElseThrow(() -> {
-                    log.warn("Key not found: {}", keyId);
+                    log.warn("Key not found or inactive: {}", keyId);
                     return new KeyNotFoundException(keyId);
                 });
+        
+        return new SecretKeySpec(keyEntity.getKeyMaterial(), keyEntity.getAlgorithm());
     }
 
     /**
      * Checks if a key exists in storage.
      *
      * @param keyId The UUID string identifier of the key
-     * @return true if the key exists, false otherwise
+     * @return true if the key exists and is active, false otherwise
      */
+    @Transactional(readOnly = true)
     public boolean keyExists(String keyId) {
-        return keyStore.containsKey(keyId);
+        return keyRepository.findByKeyIdAndActiveTrue(keyId).isPresent();
     }
 
     /**
-     * Removes a key from storage.
+     * Removes a key from storage (soft delete - marks as inactive).
      *
      * @param keyId The UUID string identifier of the key to remove
      * @return true if the key was removed, false if it didn't exist
      */
+    @Transactional
     public boolean removeKey(String keyId) {
-        boolean removed = keyStore.remove(keyId) != null;
-        if (removed) {
-            log.debug("Key removed: {}. Remaining keys: {}", keyId, keyStore.size());
-        } else {
-            log.debug("Attempted to remove non-existent key: {}", keyId);
-        }
-        return removed;
+        return keyRepository.findByKeyIdAndActiveTrue(keyId)
+                .map(keyEntity -> {
+                    keyEntity.setActive(false);
+                    keyRepository.save(keyEntity);
+                    log.debug("Key marked as inactive: {}", keyId);
+                    return true;
+                })
+                .orElseGet(() -> {
+                    log.debug("Attempted to remove non-existent or already inactive key: {}", keyId);
+                    return false;
+                });
     }
 
     /**
-     * Returns the number of keys currently stored.
+     * Returns the number of active keys currently stored.
      *
-     * @return The count of stored keys
+     * @return The count of active stored keys
      */
+    @Transactional(readOnly = true)
     public int getKeyCount() {
-        return keyStore.size();
+        return (int) keyRepository.countByActiveTrue();
     }
 
     /**
-     * Clears all keys from storage.
+     * Clears all keys from storage (marks all as inactive).
      * Primarily useful for testing.
      */
+    @Transactional
     public void clearAll() {
-        int count = keyStore.size();
-        keyStore.clear();
-        log.info("Cleared all keys from storage. {} keys removed", count);
+        long count = keyRepository.countByActiveTrue();
+        keyRepository.findAll().forEach(keyEntity -> {
+            keyEntity.setActive(false);
+            keyRepository.save(keyEntity);
+        });
+        log.info("Marked all keys as inactive. {} keys deactivated", count);
     }
 }
