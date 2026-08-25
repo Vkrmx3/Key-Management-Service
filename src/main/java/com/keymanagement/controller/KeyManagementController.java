@@ -31,16 +31,20 @@ public class KeyManagementController {
     /**
      * Creates a new encryption key.
      *
-     * @param request The create key request (can be empty)
-     * @return Response containing the new key ID
+     * @param request The create key request with optional algorithm
+     * @return Response containing the new key ID, algorithm, and key size
      */
     @PostMapping
     public ResponseEntity<CreateKeyResponse> createKey(@RequestBody(required = false) CreateKeyRequest request) {
-        log.info("Received request to create new encryption key");
-        String keyId = keyManagementService.createKey();
-        log.info("Successfully created new key with ID: {}", keyId);
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(new CreateKeyResponse(keyId));
+        log.info("Received request to create new encryption key with algorithm: {}", 
+                request != null && request.getAlgorithm() != null ? request.getAlgorithm() : "default (AES-256-GCM)");
+        
+        CreateKeyResponse response = keyManagementService.createKey(request);
+        
+        log.info("Successfully created new key: ID={}, Algorithm={}, KeySize={} bits", 
+                response.getKeyId(), response.getAlgorithm(), response.getKeySize());
+        
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     /**
@@ -87,5 +91,35 @@ public class KeyManagementController {
         
         log.info("Successfully decrypted data for key ID: {}", keyId);
         return ResponseEntity.ok(new DecryptResponse(plaintext));
+    }
+
+    /**
+     * Re-encrypts data with the current version of a key.
+     * Decrypts with an old version and re-encrypts with the current version.
+     *
+     * @param keyId   The logical key ID
+     * @param request The re-encryption request containing ciphertext, nonce, and optional source version
+     * @return Response containing newly encrypted data
+     */
+    @PostMapping("/{keyId}/reencrypt")
+    public ResponseEntity<EncryptResponse> reEncrypt(
+            @PathVariable String keyId,
+            @Valid @RequestBody ReEncryptRequest request) {
+        
+        log.info("Received re-encryption request for logical key ID: {}", keyId);
+        
+        EncryptedData newEncryptedData = keyManagementService.reEncryptData(
+                keyId,
+                request.getSourceVersion(),
+                request.getCiphertext(),
+                request.getNonce()
+        );
+        
+        log.info("Successfully re-encrypted data for logical key ID: {}", keyId);
+        
+        return ResponseEntity.ok(new EncryptResponse(
+                newEncryptedData.getCiphertext(),
+                newEncryptedData.getNonce()
+        ));
     }
 }
