@@ -30,8 +30,8 @@ jobs:
         run: |
           mvn org.owasp:dependency-check-maven:check \
             -DfailBuildOnCVSS=7 \
-            -DsuppressionFile=dependency-check-suppressions.xml \
-            || true
+            -DsuppressionFile=dependency-check-suppressions.xml
+        continue-on-error: true
 
       - name: Upload dependency check report
         if: always()
@@ -41,8 +41,9 @@ jobs:
           path: target/dependency-check-report.html
           retention-days: 30
 
-      - name: Check for vulnerabilities
-        run: mvn dependency-check:check -DfailBuildOnCVSS=9
+      - name: Check for critical vulnerabilities
+        run: |
+          mvn org.owasp:dependency-check-maven:check -DfailBuildOnCVSS=9
 
   trivy-scan:
     name: Trivy Security Scan
