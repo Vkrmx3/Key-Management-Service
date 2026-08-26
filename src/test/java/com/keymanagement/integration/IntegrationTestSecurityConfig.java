@@ -1,4 +1,4 @@
-package com.keymanagement.controller;
+package com.keymanagement.integration;
 
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
@@ -9,17 +9,17 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.web.SecurityFilterChain;
 
 /**
- * Test security configuration that disables security for controller tests.
- * Uses @Primary to override the main SecurityConfig in test contexts.
+ * Test security configuration for integration tests.
+ * Disables authentication to test API endpoints without JWT tokens.
  */
 @TestConfiguration
 @EnableWebSecurity
-public class TestSecurityConfig {
+public class IntegrationTestSecurityConfig {
 
     @Bean
     @Primary
     @Order(1)
-    public SecurityFilterChain testSecurityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain integrationTestSecurityFilterChain(HttpSecurity http) throws Exception {
         http
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(authz -> authz

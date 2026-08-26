@@ -99,11 +99,13 @@ public class User {
     }
 
     public Set<Role> getRoles() {
-        return roles;
+        // Return defensive copy to prevent external modification
+        return roles != null ? new HashSet<>(roles) : new HashSet<>();
     }
 
     public void setRoles(Set<Role> roles) {
-        this.roles = roles;
+        // Create defensive copy to prevent external modification
+        this.roles = (roles != null) ? new HashSet<>(roles) : new HashSet<>();
     }
 
     public void addRole(Role role) {

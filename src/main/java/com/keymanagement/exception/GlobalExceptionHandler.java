@@ -133,7 +133,7 @@ public class GlobalExceptionHandler {
             BadCredentialsException ex,
             HttpServletRequest request) {
         
-        log.warn("Authentication failed - URI: {}", request.getRequestURI());
+        log.warn("Authentication failed - URI: {} - Error: {}", request.getRequestURI(), ex.getMessage());
         ErrorResponse errorResponse = new ErrorResponse(
                 HttpStatus.UNAUTHORIZED.value(),
                 "Unauthorized",
@@ -152,7 +152,7 @@ public class GlobalExceptionHandler {
             UsernameNotFoundException ex,
             HttpServletRequest request) {
         
-        log.warn("User not found - URI: {}", request.getRequestURI());
+        log.warn("User not found - URI: {} - Error: {}", request.getRequestURI(), ex.getMessage());
         ErrorResponse errorResponse = new ErrorResponse(
                 HttpStatus.NOT_FOUND.value(),
                 "Not Found",
