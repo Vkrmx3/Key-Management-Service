@@ -214,10 +214,8 @@ jobs:
           path: target/bom.xml
           retention-days: 90
 
-      - name: SBOM vulnerability scan
-        uses: CycloneDX/gh-action-sbom-verify@v1
-        with:
-          sbom-file: target/bom.xml
+      # SBOM vulnerability scanning is covered by OWASP Dependency Check and Trivy
+      # The SBOM file is uploaded as an artifact for manual review if needed
 
   security-report:
     name: Security Report Summary
