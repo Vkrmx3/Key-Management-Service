@@ -64,8 +64,22 @@ Thumbs.db
 # Spring Boot DevTools
 .spring-boot-devtools.properties
 
+# Environment Variables (contains secrets!)
+.env
+.env.local
+.env.*.local
+.env.docker
+.env.example
+
 # Temporary files
 *.tmp
 *.bak
 *.swp
 *~.nib
+
+# Documentation files (except README)
+*.md
+!README.md
+
+# Local test scripts
+test-*.ps1
