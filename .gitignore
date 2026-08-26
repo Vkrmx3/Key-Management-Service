@@ -68,6 +68,8 @@ Thumbs.db
 .env
 .env.local
 .env.*.local
+.env.docker
+.env.example
 
 # Temporary files
 *.tmp
@@ -78,3 +80,6 @@ Thumbs.db
 # Documentation files (except README)
 *.md
 !README.md
+
+# Local test scripts
+test-*.ps1
