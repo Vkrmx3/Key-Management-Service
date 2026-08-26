@@ -1,6 +1,7 @@
 package com.keymanagement.repository;
 
 import com.keymanagement.entity.KeyEntity;
+import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,6 +23,9 @@ class KeyRepositoryTest {
     @Autowired
     private KeyRepository keyRepository;
 
+    @Autowired
+    private EntityManager entityManager;
+
     private KeyEntity testKeyEntity;
 
     @BeforeEach
@@ -38,6 +42,7 @@ class KeyRepositoryTest {
     void testSave_ShouldPersistKeyEntity() {
         // When
         KeyEntity saved = keyRepository.save(testKeyEntity);
+        entityManager.flush(); // Flush to trigger @CreationTimestamp
 
         // Then
         assertNotNull(saved);
@@ -186,6 +191,7 @@ class KeyRepositoryTest {
     void testKeyEntity_CreatedAtShouldBeAutoSet() {
         // Given & When
         KeyEntity saved = keyRepository.save(testKeyEntity);
+        entityManager.flush(); // Flush to trigger @CreationTimestamp
 
         // Then
         assertNotNull(saved.getCreatedAt());
