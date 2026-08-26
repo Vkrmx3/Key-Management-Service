@@ -36,6 +36,9 @@ class KeyManagementControllerTest {
     @Autowired
     private ObjectMapper objectMapper;
 
+    // Note: @MockBean is deprecated in Spring Boot 3.4+ but is still the recommended
+    // approach for @WebMvcTest slices until Spring provides a stable alternative
+    @SuppressWarnings("removal")
     @MockBean
     private KeyManagementService keyManagementService;
 
