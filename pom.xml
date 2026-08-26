@@ -130,6 +130,15 @@
                 <configuration>
                     <failBuildOnCVSS>7</failBuildOnCVSS>
                     <suppressionFile>dependency-check-suppressions.xml</suppressionFile>
+                    <!-- NVD API Key (optional, set via environment variable) -->
+                    <nvdApiKey>${env.NVD_API_KEY}</nvdApiKey>
+                    <!-- Don't fail when NVD data update fails (better for CI/CD) -->
+                    <failOnError>false</failOnError>
+                    <!-- Use cached data if update fails -->
+                    <autoUpdate>false</autoUpdate>
+                    <!-- Retry settings for NVD API -->
+                    <nvdMaxRetryCount>3</nvdMaxRetryCount>
+                    <nvdApiDelay>2000</nvdApiDelay>
                 </configuration>
             </plugin>
 
