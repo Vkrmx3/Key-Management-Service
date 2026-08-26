@@ -1,0 +1,25 @@
+# Gitleaks Configuration for Key Management Service
+# This configuration excludes known test secrets and test resource files
+
+title = "Key Management Service - Gitleaks Configuration"
+
+# Exclude test resource files - they contain expected test secrets
+[allowlist]
+description = "Allowlist for test files and known test secrets"
+paths = [
+    '''src/test/resources/.*''',
+    '''src/test/.*\.properties''',
+    '''.*test.*\.properties''',
+]
+
+# Allow specific test secret patterns that are not real secrets
+regexes = [
+    '''test-secret-key-for-ci-pipeline-minimum-256-bits-required-for-hs256''',
+]
+
+# Stopwords - common words that shouldn't trigger secret detection in test files
+stopwords = [
+    'testdb',
+    'testuser',
+    'testpassword',
+]
