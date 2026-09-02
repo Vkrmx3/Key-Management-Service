@@ -1,5 +1,8 @@
 package com.keymanagement.controller;
 
+import com.keymanagement.security.CustomUserDetailsService;
+import com.keymanagement.security.JwtUtil;
+import org.mockito.Mockito;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
@@ -26,5 +29,17 @@ public class TestSecurityConfig {
                         .anyRequest().permitAll()
                 );
         return http.build();
+    }
+
+    // JwtAuthenticationFilter is scanned by @WebMvcTest (it implements Filter), so its
+    // @Autowired dependencies must be satisfied with mocks in this slice context.
+    @Bean
+    public JwtUtil jwtUtil() {
+        return Mockito.mock(JwtUtil.class);
+    }
+
+    @Bean
+    public CustomUserDetailsService customUserDetailsService() {
+        return Mockito.mock(CustomUserDetailsService.class);
     }
 }

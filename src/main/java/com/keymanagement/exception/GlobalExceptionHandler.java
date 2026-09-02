@@ -1,6 +1,7 @@
 package com.keymanagement.exception;
 
 import com.keymanagement.dto.ErrorResponse;
+import com.keymanagement.security.LogSanitizer;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -133,7 +134,7 @@ public class GlobalExceptionHandler {
             BadCredentialsException ex,
             HttpServletRequest request) {
         
-        log.warn("Authentication failed - URI: {} - Error: {}", request.getRequestURI(), ex.getMessage());
+        log.warn("Authentication failed - URI: {} - Error: {}", request.getRequestURI(), LogSanitizer.sanitize(ex.getMessage()));
         ErrorResponse errorResponse = new ErrorResponse(
                 HttpStatus.UNAUTHORIZED.value(),
                 "Unauthorized",
@@ -152,7 +153,7 @@ public class GlobalExceptionHandler {
             UsernameNotFoundException ex,
             HttpServletRequest request) {
         
-        log.warn("User not found - URI: {} - Error: {}", request.getRequestURI(), ex.getMessage());
+        log.warn("User not found - URI: {} - Error: {}", request.getRequestURI(), LogSanitizer.sanitize(ex.getMessage()));
         ErrorResponse errorResponse = new ErrorResponse(
                 HttpStatus.NOT_FOUND.value(),
                 "Not Found",

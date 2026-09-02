@@ -2,6 +2,7 @@ package com.keymanagement.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
@@ -51,9 +52,14 @@ public class SecurityConfig {
      * "processing requests from browser clients" using cookie-based authentication.
      * https://docs.spring.io/spring-security/reference/servlet/exploits/csrf.html
      * 
-     * @lgtm[java/spring-disabled-csrf-protection] Stateless JWT API - CSRF not applicable
+     * Note: the corresponding CodeQL alert (java/spring-disabled-csrf-protection) must be
+     * dismissed manually in the GitHub Security tab - "lgtm[rule-id]" suppression comments
+     * are a legacy lgtm.com convention and are not honored by GitHub's default CodeQL setup.
      */
+    // Disabled under "integration-test" so those tests can supply their own permissive
+    // SecurityFilterChain without two chains both matching "any request".
     @Bean
+    @Profile("!integration-test")
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
                 // CSRF disabled - safe for stateless JWT authentication (see method javadoc)

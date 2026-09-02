@@ -7,6 +7,7 @@ import com.keymanagement.entity.Role;
 import com.keymanagement.entity.User;
 import com.keymanagement.repository.UserRepository;
 import com.keymanagement.security.JwtUtil;
+import com.keymanagement.security.LogSanitizer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -55,7 +56,7 @@ public class AuthService {
      */
     @Transactional
     public AuthResponse register(RegisterRequest registerRequest) {
-        logger.info("Registering new user: {}", registerRequest.getUsername());
+        logger.info("Registering new user: {}", LogSanitizer.sanitize(registerRequest.getUsername()));
 
         // Check if username already exists
         if (userRepository.existsByUsername(registerRequest.getUsername())) {
@@ -75,7 +76,7 @@ public class AuthService {
         user.getRoles().add(Role.USER); // Default role
 
         user = userRepository.save(user);
-        logger.info("User registered successfully: {}", user.getUsername());
+        logger.info("User registered successfully: {}", LogSanitizer.sanitize(user.getUsername()));
 
         // Generate JWT token
         String token = jwtUtil.generateToken(user.getUsername());
@@ -91,7 +92,7 @@ public class AuthService {
      */
     @Transactional
     public AuthResponse login(LoginRequest loginRequest) {
-        logger.info("User login attempt: {}", loginRequest.getUsername());
+        logger.info("User login attempt: {}", LogSanitizer.sanitize(loginRequest.getUsername()));
 
         try {
             // Authenticate user
@@ -114,11 +115,11 @@ public class AuthService {
             user.setLastLoginAt(LocalDateTime.now());
             userRepository.save(user);
 
-            logger.info("User logged in successfully: {}", user.getUsername());
+            logger.info("User logged in successfully: {}", LogSanitizer.sanitize(user.getUsername()));
 
             return createAuthResponse(user, token);
         } catch (BadCredentialsException e) {
-            logger.warn("Failed login attempt for user: {}", loginRequest.getUsername());
+            logger.warn("Failed login attempt for user: {}", LogSanitizer.sanitize(loginRequest.getUsername()));
             throw new BadCredentialsException("Invalid username or password");
         }
     }

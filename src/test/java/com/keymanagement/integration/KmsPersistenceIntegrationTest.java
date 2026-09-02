@@ -13,6 +13,7 @@ import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 
 import com.keymanagement.dto.CreateKeyResponse;
@@ -29,6 +30,7 @@ import com.keymanagement.repository.KeyRepository;
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @TestPropertySource(locations = "classpath:application.properties")
+@ActiveProfiles("integration-test")
 @Import(IntegrationTestSecurityConfig.class)
 class KmsPersistenceIntegrationTest {
 
