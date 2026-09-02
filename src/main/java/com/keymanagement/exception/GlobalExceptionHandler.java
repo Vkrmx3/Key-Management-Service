@@ -1,11 +1,14 @@
 package com.keymanagement.exception;
 
 import com.keymanagement.dto.ErrorResponse;
+import com.keymanagement.security.LogSanitizer;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -116,11 +119,49 @@ public class GlobalExceptionHandler {
         ErrorResponse errorResponse = new ErrorResponse(
                 HttpStatus.BAD_REQUEST.value(),
                 "Bad Request",
-                "Invalid input: " + ex.getMessage(),
+                ex.getMessage(),
                 request.getRequestURI()
         );
         
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
+    }
+
+    /**
+     * Handles BadCredentialsException - returns 401 Unauthorized.
+     */
+    @ExceptionHandler(BadCredentialsException.class)
+    public ResponseEntity<ErrorResponse> handleBadCredentialsException(
+            BadCredentialsException ex,
+            HttpServletRequest request) {
+        
+        log.warn("Authentication failed - URI: {} - Error: {}", request.getRequestURI(), LogSanitizer.sanitize(ex.getMessage()));
+        ErrorResponse errorResponse = new ErrorResponse(
+                HttpStatus.UNAUTHORIZED.value(),
+                "Unauthorized",
+                "Invalid username or password",
+                request.getRequestURI()
+        );
+        
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(errorResponse);
+    }
+
+    /**
+     * Handles UsernameNotFoundException - returns 404 Not Found.
+     */
+    @ExceptionHandler(UsernameNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleUsernameNotFoundException(
+            UsernameNotFoundException ex,
+            HttpServletRequest request) {
+        
+        log.warn("User not found - URI: {} - Error: {}", request.getRequestURI(), LogSanitizer.sanitize(ex.getMessage()));
+        ErrorResponse errorResponse = new ErrorResponse(
+                HttpStatus.NOT_FOUND.value(),
+                "Not Found",
+                "User not found",
+                request.getRequestURI()
+        );
+        
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorResponse);
     }
 
     /**

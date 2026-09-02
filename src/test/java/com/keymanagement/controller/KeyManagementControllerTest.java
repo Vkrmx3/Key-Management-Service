@@ -11,7 +11,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Base64;
@@ -24,6 +26,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(KeyManagementController.class)
+@Import(TestSecurityConfig.class)
+@WithMockUser(username = "testuser", roles = {"USER"})
 class KeyManagementControllerTest {
 
     @Autowired
@@ -32,6 +36,9 @@ class KeyManagementControllerTest {
     @Autowired
     private ObjectMapper objectMapper;
 
+    // Note: @MockBean is deprecated in Spring Boot 3.4+ but is still the recommended
+    // approach for @WebMvcTest slices until Spring provides a stable alternative
+    @SuppressWarnings("removal")
     @MockBean
     private KeyManagementService keyManagementService;
 

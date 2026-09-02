@@ -2,14 +2,13 @@ package com.keymanagement.repository;
 
 import com.keymanagement.entity.KeyEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
 
 /**
  * JPA Repository for encryption keys.
+ * Note: @Repository annotation is not needed for Spring Data JPA interfaces.
  */
-@Repository
 public interface KeyRepository extends JpaRepository<KeyEntity, String> {
 
     /**

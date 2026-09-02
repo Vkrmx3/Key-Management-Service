@@ -1,7 +1,6 @@
 package com.keymanagement.service;
 
 import com.keymanagement.exception.DecryptionException;
-import com.keymanagement.exception.EncryptionException;
 import com.keymanagement.model.EncryptedData;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
