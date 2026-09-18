@@ -32,7 +32,7 @@ public class GlobalExceptionHandler {
             KeyNotFoundException ex, 
             HttpServletRequest request) {
         
-        log.warn("Key not found: {} - URI: {}", ex.getMessage(), request.getRequestURI());
+        log.warn("Key not found: {} - URI: {}", LogSanitizer.sanitize(ex.getMessage()), request.getRequestURI());
         ErrorResponse errorResponse = new ErrorResponse(
                 HttpStatus.NOT_FOUND.value(),
                 "Not Found",
@@ -52,7 +52,7 @@ public class GlobalExceptionHandler {
             DecryptionException ex, 
             HttpServletRequest request) {
         
-        log.error("Decryption failed - URI: {} - Error: {}", request.getRequestURI(), ex.getMessage());
+        log.error("Decryption failed - URI: {} - Error: {}", request.getRequestURI(), LogSanitizer.sanitize(ex.getMessage()));
         ErrorResponse errorResponse = new ErrorResponse(
                 HttpStatus.BAD_REQUEST.value(),
                 "Bad Request",
@@ -71,7 +71,7 @@ public class GlobalExceptionHandler {
             EncryptionException ex, 
             HttpServletRequest request) {
         
-        log.error("Encryption failed - URI: {} - Error: {}", request.getRequestURI(), ex.getMessage());
+        log.error("Encryption failed - URI: {} - Error: {}", request.getRequestURI(), LogSanitizer.sanitize(ex.getMessage()));
         ErrorResponse errorResponse = new ErrorResponse(
                 HttpStatus.INTERNAL_SERVER_ERROR.value(),
                 "Internal Server Error",
@@ -96,7 +96,7 @@ public class GlobalExceptionHandler {
                 .map(error -> error.getField() + ": " + error.getDefaultMessage())
                 .collect(Collectors.joining(", "));
         
-        log.warn("Validation error - URI: {} - Errors: {}", request.getRequestURI(), errorMessage);
+        log.warn("Validation error - URI: {} - Errors: {}", request.getRequestURI(), LogSanitizer.sanitize(errorMessage));
         ErrorResponse errorResponse = new ErrorResponse(
                 HttpStatus.BAD_REQUEST.value(),
                 "Bad Request",
@@ -115,7 +115,7 @@ public class GlobalExceptionHandler {
             IllegalArgumentException ex, 
             HttpServletRequest request) {
         
-        log.warn("Illegal argument - URI: {} - Error: {}", request.getRequestURI(), ex.getMessage());
+        log.warn("Illegal argument - URI: {} - Error: {}", request.getRequestURI(), LogSanitizer.sanitize(ex.getMessage()));
         ErrorResponse errorResponse = new ErrorResponse(
                 HttpStatus.BAD_REQUEST.value(),
                 "Bad Request",
@@ -172,7 +172,7 @@ public class GlobalExceptionHandler {
             Exception ex, 
             HttpServletRequest request) {
         
-        log.error("Unexpected error - URI: {} - Error: {}", request.getRequestURI(), ex.getMessage(), ex);
+        log.error("Unexpected error - URI: {} - Error: {}", request.getRequestURI(), LogSanitizer.sanitize(ex.getMessage()), ex);
         ErrorResponse errorResponse = new ErrorResponse(
                 HttpStatus.INTERNAL_SERVER_ERROR.value(),
                 "Internal Server Error",
