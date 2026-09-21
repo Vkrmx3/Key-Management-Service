@@ -60,7 +60,6 @@ class KeyManagementServiceTest {
         // Given
         String keyId = "test-key-id";
         String plaintext = "Hello, World!";
-        byte[] plaintextBytes = plaintext.getBytes(StandardCharsets.UTF_8);
         byte[] mockCiphertext = "encrypted-data".getBytes();
         byte[] mockNonce = new byte[12];
         EncryptedData mockEncryptedData = new EncryptedData(mockCiphertext, mockNonce);

@@ -1,6 +1,7 @@
 package com.keymanagement.service;
 
 import com.keymanagement.model.EncryptedData;
+import com.keymanagement.security.LogSanitizer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -47,11 +48,11 @@ public class KeyManagementService {
      * @return EncryptedData containing ciphertext and nonce
      */
     public EncryptedData encryptData(String keyId, String plaintext) {
-        log.debug("Encrypting data with key ID: {}", keyId);
+        log.debug("Encrypting data with key ID: {}", LogSanitizer.sanitize(keyId));
         SecretKey key = keyStorageService.getKey(keyId);
         byte[] plaintextBytes = plaintext.getBytes(StandardCharsets.UTF_8);
         EncryptedData encryptedData = cryptoService.encrypt(key, plaintextBytes);
-        log.debug("Data encrypted successfully with key ID: {}", keyId);
+        log.debug("Data encrypted successfully with key ID: {}", LogSanitizer.sanitize(keyId));
         return encryptedData;
     }
 
@@ -64,12 +65,12 @@ public class KeyManagementService {
      * @return The decrypted plaintext string
      */
     public String decryptData(String keyId, String ciphertextB64, String nonceB64) {
-        log.debug("Decrypting data with key ID: {}", keyId);
+        log.debug("Decrypting data with key ID: {}", LogSanitizer.sanitize(keyId));
         SecretKey key = keyStorageService.getKey(keyId);
         byte[] ciphertext = Base64.getDecoder().decode(ciphertextB64);
         byte[] nonce = Base64.getDecoder().decode(nonceB64);
         byte[] plaintextBytes = cryptoService.decrypt(key, ciphertext, nonce);
-        log.debug("Data decrypted successfully with key ID: {}", keyId);
+        log.debug("Data decrypted successfully with key ID: {}", LogSanitizer.sanitize(keyId));
         return new String(plaintextBytes, StandardCharsets.UTF_8);
     }
 }

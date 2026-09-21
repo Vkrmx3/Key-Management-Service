@@ -179,7 +179,7 @@ class KeyRepositoryTest {
         KeyEntity keyEntity = new KeyEntity("large-key", keyMaterial, "AES", 256);
 
         // When
-        KeyEntity saved = keyRepository.save(keyEntity);
+        keyRepository.save(keyEntity);
         KeyEntity retrieved = keyRepository.findById("large-key").orElseThrow();
 
         // Then
