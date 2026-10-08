@@ -78,8 +78,12 @@ public class CryptoService {
 
             log.debug("Encryption operation completed successfully");
             return new EncryptedData(ciphertext, nonce);
-        } catch (Exception e) {
+        } catch (IllegalStateException | IllegalArgumentException e) {
             // Never log the plaintext or key in the error message
+            log.error("Encryption operation failed - invalid state or arguments", e);
+            throw new EncryptionException("Encryption operation failed", e);
+        } catch (Exception e) {
+            // Catch remaining crypto exceptions (InvalidKeyException, etc.)
             log.error("Encryption operation failed", e);
             throw new EncryptionException("Encryption operation failed", e);
         }
@@ -104,8 +108,16 @@ public class CryptoService {
             byte[] plaintext = cipher.doFinal(ciphertext);
             log.debug("Decryption operation completed successfully");
             return plaintext;
+        } catch (javax.crypto.AEADBadTagException e) {
+            // Authentication tag verification failed - possible tampering
+            log.error("Decryption operation failed - authentication tag mismatch (possible tampering)", e);
+            throw new DecryptionException("Decryption failed - data may have been tampered with", e);
+        } catch (IllegalStateException | IllegalArgumentException e) {
+            // Invalid state or arguments
+            log.error("Decryption operation failed - invalid state or arguments", e);
+            throw new DecryptionException("Decryption operation failed", e);
         } catch (Exception e) {
-            // Never log the ciphertext, key, or nonce in the error message
+            // Catch remaining crypto exceptions (InvalidKeyException, etc.)
             log.error("Decryption operation failed - possible tampering or incorrect key/nonce", e);
             throw new DecryptionException("Decryption operation failed", e);
         }

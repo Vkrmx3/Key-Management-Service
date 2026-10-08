@@ -2,6 +2,7 @@ package com.keymanagement.controller;
 
 import com.keymanagement.dto.*;
 import com.keymanagement.model.EncryptedData;
+import com.keymanagement.security.LogSanitizer;
 import com.keymanagement.service.KeyManagementService;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
@@ -31,11 +32,10 @@ public class KeyManagementController {
     /**
      * Creates a new encryption key.
      *
-     * @param request The create key request (can be empty)
      * @return Response containing the new key ID
      */
     @PostMapping
-    public ResponseEntity<CreateKeyResponse> createKey(@RequestBody(required = false) CreateKeyRequest request) {
+    public ResponseEntity<CreateKeyResponse> createKey() {
         log.info("Received request to create new encryption key");
         String keyId = keyManagementService.createKey();
         log.info("Successfully created new key with ID: {}", keyId);
@@ -55,14 +55,14 @@ public class KeyManagementController {
             @PathVariable String keyId,
             @Valid @RequestBody EncryptRequest request) {
         
-        log.info("Received encryption request for key ID: {}", keyId);
+        log.info("Received encryption request for key ID: {}", LogSanitizer.sanitize(keyId));
         EncryptedData encryptedData = keyManagementService.encryptData(keyId, request.getPlaintext());
         
         // Encode ciphertext and nonce to Base64 for JSON transport
         String ciphertextB64 = Base64.getEncoder().encodeToString(encryptedData.getCiphertext());
         String nonceB64 = Base64.getEncoder().encodeToString(encryptedData.getNonce());
         
-        log.info("Successfully encrypted data for key ID: {}", keyId);
+        log.info("Successfully encrypted data for key ID: {}", LogSanitizer.sanitize(keyId));
         return ResponseEntity.ok(new EncryptResponse(ciphertextB64, nonceB64));
     }
 
@@ -78,14 +78,14 @@ public class KeyManagementController {
             @PathVariable String keyId,
             @Valid @RequestBody DecryptRequest request) {
         
-        log.info("Received decryption request for key ID: {}", keyId);
+        log.info("Received decryption request for key ID: {}", LogSanitizer.sanitize(keyId));
         String plaintext = keyManagementService.decryptData(
                 keyId, 
                 request.getCiphertext(), 
                 request.getNonce()
         );
         
-        log.info("Successfully decrypted data for key ID: {}", keyId);
+        log.info("Successfully decrypted data for key ID: {}", LogSanitizer.sanitize(keyId));
         return ResponseEntity.ok(new DecryptResponse(plaintext));
     }
 }

@@ -1,16 +1,19 @@
 package com.keymanagement.service;
 
-import com.keymanagement.entity.KeyEntity;
-import com.keymanagement.exception.KeyNotFoundException;
-import com.keymanagement.repository.KeyRepository;
+import java.util.UUID;
+
+import javax.crypto.SecretKey;
+import javax.crypto.spec.SecretKeySpec;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import javax.crypto.SecretKey;
-import javax.crypto.spec.SecretKeySpec;
-import java.util.UUID;
+import com.keymanagement.entity.KeyEntity;
+import com.keymanagement.exception.KeyNotFoundException;
+import com.keymanagement.repository.KeyRepository;
+import com.keymanagement.security.LogSanitizer;
 
 /**
  * Service for storing and retrieving encryption keys in PostgreSQL database.
@@ -59,7 +62,7 @@ public class KeyStorageService {
      */
     @Transactional(readOnly = true)
     public SecretKey getKey(String keyId) {
-        log.debug("Retrieving key with ID: {}", keyId);
+        log.debug("Retrieving key with ID: {}", LogSanitizer.sanitize(keyId));
         KeyEntity keyEntity = keyRepository.findByKeyIdAndActiveTrue(keyId)
                 .orElseThrow(() -> {
                     log.warn("Key not found or inactive: {}", keyId);
