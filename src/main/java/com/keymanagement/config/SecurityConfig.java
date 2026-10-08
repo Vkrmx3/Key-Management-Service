@@ -3,6 +3,10 @@ package com.keymanagement.config;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.InvalidMediaTypeException;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
@@ -14,6 +18,11 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.web.util.matcher.AndRequestMatcher;
+import org.springframework.security.web.util.matcher.OrRequestMatcher;
+import org.springframework.security.web.util.matcher.RequestMatcher;
+import org.springframework.util.StringUtils;
 
 import com.keymanagement.security.CustomUserDetailsService;
 import com.keymanagement.security.JwtAuthenticationFilter;
@@ -38,32 +47,37 @@ public class SecurityConfig {
 
     /**
      * Configure HTTP security.
-     * 
-     * CSRF Protection Disabled - Justification:
-     * This is a stateless REST API using JWT token-based authentication.
-     * CSRF protection is NOT required because:
-     * 1. SessionCreationPolicy.STATELESS - No server-side sessions or cookies
-     * 2. JWT tokens are sent via Authorization header, not cookies
-     * 3. Browsers do not automatically attach Authorization headers to requests
-     * 4. CSRF attacks rely on browsers automatically sending cookies with requests
-     * 5. This API is designed for non-browser clients (mobile apps, services)
-     * 
-     * Reference: Spring Security docs state CSRF protection is only needed when
-     * "processing requests from browser clients" using cookie-based authentication.
-     * https://docs.spring.io/spring-security/reference/servlet/exploits/csrf.html
-     * 
-     * Note: the corresponding CodeQL alert (java/spring-disabled-csrf-protection) must be
-     * dismissed manually in the GitHub Security tab - "lgtm[rule-id]" suppression comments
-     * are a legacy lgtm.com convention and are not honored by GitHub's default CodeQL setup.
      */
     // Disabled under "integration-test" so those tests can supply their own permissive
     // SecurityFilterChain without two chains both matching "any request".
     @Bean
     @Profile("!integration-test")
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        PathPatternRequestMatcher.Builder paths = PathPatternRequestMatcher.withDefaults();
+        RequestMatcher bearerApiRequest = new AndRequestMatcher(paths.matcher("/api/keys/**"), request -> {
+            String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
+            return authorization != null && authorization.startsWith("Bearer ")
+                    && StringUtils.hasText(authorization.substring(7));
+        });
+        RequestMatcher jsonAuthenticationRequest = new AndRequestMatcher(
+                new OrRequestMatcher(paths.matcher(HttpMethod.POST, "/api/auth/login"),
+                        paths.matcher(HttpMethod.POST, "/api/auth/register")),
+                request -> {
+                    String contentType = request.getContentType();
+                    if (contentType == null) {
+                        return false;
+                    }
+                    try {
+                        MediaType mediaType = MediaType.parseMediaType(contentType);
+                        return MediaType.APPLICATION_JSON.includes(mediaType)
+                                || new MediaType("application", "*+json").includes(mediaType);
+                    } catch (InvalidMediaTypeException exception) {
+                        return false;
+                    }
+                });
+
         http
-                // CSRF disabled - safe for stateless JWT authentication (see method javadoc)
-                .csrf(csrf -> csrf.disable())
+                .csrf(csrf -> csrf.ignoringRequestMatchers(bearerApiRequest, jsonAuthenticationRequest))
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )

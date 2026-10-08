@@ -1,8 +1,9 @@
 package com.keymanagement.exception;
 
-import com.keymanagement.dto.ErrorResponse;
-import com.keymanagement.security.LogSanitizer;
-import jakarta.servlet.http.HttpServletRequest;
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.util.stream.Collectors;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -13,7 +14,10 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-import java.util.stream.Collectors;
+import com.keymanagement.dto.ErrorResponse;
+import com.keymanagement.security.LogSanitizer;
+
+import jakarta.servlet.http.HttpServletRequest;
 
 /**
  * Global exception handler for the KMS application.
@@ -32,7 +36,8 @@ public class GlobalExceptionHandler {
             KeyNotFoundException ex, 
             HttpServletRequest request) {
         
-        log.warn("Key not found: {} - URI: {}", LogSanitizer.sanitize(ex.getMessage()), request.getRequestURI());
+        log.warn("Key not found: {} - URI: {}", LogSanitizer.sanitize(ex.getMessage()),
+                LogSanitizer.sanitize(request.getRequestURI()));
         ErrorResponse errorResponse = new ErrorResponse(
                 HttpStatus.NOT_FOUND.value(),
                 "Not Found",
@@ -52,7 +57,8 @@ public class GlobalExceptionHandler {
             DecryptionException ex, 
             HttpServletRequest request) {
         
-        log.error("Decryption failed - URI: {} - Error: {}", request.getRequestURI(), LogSanitizer.sanitize(ex.getMessage()));
+        log.error("Decryption failed - URI: {} - Error: {}", LogSanitizer.sanitize(request.getRequestURI()),
+                LogSanitizer.sanitize(ex.getMessage()));
         ErrorResponse errorResponse = new ErrorResponse(
                 HttpStatus.BAD_REQUEST.value(),
                 "Bad Request",
@@ -71,7 +77,8 @@ public class GlobalExceptionHandler {
             EncryptionException ex, 
             HttpServletRequest request) {
         
-        log.error("Encryption failed - URI: {} - Error: {}", request.getRequestURI(), LogSanitizer.sanitize(ex.getMessage()));
+        log.error("Encryption failed - URI: {} - Error: {}", LogSanitizer.sanitize(request.getRequestURI()),
+                LogSanitizer.sanitize(ex.getMessage()));
         ErrorResponse errorResponse = new ErrorResponse(
                 HttpStatus.INTERNAL_SERVER_ERROR.value(),
                 "Internal Server Error",
@@ -96,7 +103,8 @@ public class GlobalExceptionHandler {
                 .map(error -> error.getField() + ": " + error.getDefaultMessage())
                 .collect(Collectors.joining(", "));
         
-        log.warn("Validation error - URI: {} - Errors: {}", request.getRequestURI(), LogSanitizer.sanitize(errorMessage));
+        log.warn("Validation error - URI: {} - Errors: {}", LogSanitizer.sanitize(request.getRequestURI()),
+                LogSanitizer.sanitize(errorMessage));
         ErrorResponse errorResponse = new ErrorResponse(
                 HttpStatus.BAD_REQUEST.value(),
                 "Bad Request",
@@ -115,7 +123,8 @@ public class GlobalExceptionHandler {
             IllegalArgumentException ex, 
             HttpServletRequest request) {
         
-        log.warn("Illegal argument - URI: {} - Error: {}", request.getRequestURI(), LogSanitizer.sanitize(ex.getMessage()));
+        log.warn("Illegal argument - URI: {} - Error: {}", LogSanitizer.sanitize(request.getRequestURI()),
+                LogSanitizer.sanitize(ex.getMessage()));
         ErrorResponse errorResponse = new ErrorResponse(
                 HttpStatus.BAD_REQUEST.value(),
                 "Bad Request",
@@ -134,7 +143,8 @@ public class GlobalExceptionHandler {
             BadCredentialsException ex,
             HttpServletRequest request) {
         
-        log.warn("Authentication failed - URI: {} - Error: {}", request.getRequestURI(), LogSanitizer.sanitize(ex.getMessage()));
+        log.warn("Authentication failed - URI: {} - Error: {}", LogSanitizer.sanitize(request.getRequestURI()),
+                LogSanitizer.sanitize(ex.getMessage()));
         ErrorResponse errorResponse = new ErrorResponse(
                 HttpStatus.UNAUTHORIZED.value(),
                 "Unauthorized",
@@ -153,7 +163,8 @@ public class GlobalExceptionHandler {
             UsernameNotFoundException ex,
             HttpServletRequest request) {
         
-        log.warn("User not found - URI: {} - Error: {}", request.getRequestURI(), LogSanitizer.sanitize(ex.getMessage()));
+        log.warn("User not found - URI: {} - Error: {}", LogSanitizer.sanitize(request.getRequestURI()),
+                LogSanitizer.sanitize(ex.getMessage()));
         ErrorResponse errorResponse = new ErrorResponse(
                 HttpStatus.NOT_FOUND.value(),
                 "Not Found",
@@ -172,7 +183,10 @@ public class GlobalExceptionHandler {
             Exception ex, 
             HttpServletRequest request) {
         
-        log.error("Unexpected error - URI: {} - Error: {}", request.getRequestURI(), LogSanitizer.sanitize(ex.getMessage()), ex);
+        StringWriter stackTrace = new StringWriter();
+        ex.printStackTrace(new PrintWriter(stackTrace));
+        log.error("Unexpected error - URI: {} - Error: {}", LogSanitizer.sanitize(request.getRequestURI()),
+                LogSanitizer.sanitize(stackTrace.toString()));
         ErrorResponse errorResponse = new ErrorResponse(
                 HttpStatus.INTERNAL_SERVER_ERROR.value(),
                 "Internal Server Error",
