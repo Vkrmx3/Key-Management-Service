@@ -32,15 +32,21 @@ public class KeyManagementController {
     /**
      * Creates a new encryption key.
      *
-     * @return Response containing the new key ID
+     * @param request The create key request with optional algorithm
+     * @return Response containing the new key ID, algorithm, and key size
      */
     @PostMapping
-    public ResponseEntity<CreateKeyResponse> createKey() {
-        log.info("Received request to create new encryption key");
-        String keyId = keyManagementService.createKey();
-        log.info("Successfully created new key with ID: {}", keyId);
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(new CreateKeyResponse(keyId));
+        public ResponseEntity<CreateKeyResponse> createKey(@Valid @RequestBody(required = false) CreateKeyRequest request) {
+        log.info("Received request to create new encryption key with algorithm: {}", 
+                request != null && request.getAlgorithm() != null
+                        ? LogSanitizer.sanitize(request.getAlgorithm()) : "default (AES-256-GCM)");
+        
+        CreateKeyResponse response = keyManagementService.createKey(request);
+        
+        log.info("Successfully created new key: ID={}, Algorithm={}, KeySize={} bits", 
+                response.getKeyId(), response.getAlgorithm(), response.getKeySize());
+        
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     /**
@@ -63,7 +69,7 @@ public class KeyManagementController {
         String nonceB64 = Base64.getEncoder().encodeToString(encryptedData.getNonce());
         
         log.info("Successfully encrypted data for key ID: {}", LogSanitizer.sanitize(keyId));
-        return ResponseEntity.ok(new EncryptResponse(ciphertextB64, nonceB64));
+        return ResponseEntity.ok(new EncryptResponse(ciphertextB64, nonceB64, encryptedData.getKeyId()));
     }
 
     /**
@@ -87,5 +93,36 @@ public class KeyManagementController {
         
         log.info("Successfully decrypted data for key ID: {}", LogSanitizer.sanitize(keyId));
         return ResponseEntity.ok(new DecryptResponse(plaintext));
+    }
+
+    /**
+     * Re-encrypts data with the current version of a key.
+     * Decrypts with an old version and re-encrypts with the current version.
+     *
+     * @param keyId   The logical key ID
+     * @param request The re-encryption request containing ciphertext, nonce, and optional source version
+     * @return Response containing newly encrypted data
+     */
+    @PostMapping("/{keyId}/reencrypt")
+    public ResponseEntity<EncryptResponse> reEncrypt(
+            @PathVariable String keyId,
+            @Valid @RequestBody ReEncryptRequest request) {
+        
+                log.info("Received re-encryption request for logical key ID: {}", LogSanitizer.sanitize(keyId));
+        
+        EncryptedData newEncryptedData = keyManagementService.reEncryptData(
+                keyId,
+                request.getSourceVersion(),
+                request.getCiphertext(),
+                request.getNonce()
+        );
+        
+        log.info("Successfully re-encrypted data for logical key ID: {}", LogSanitizer.sanitize(keyId));
+        
+        return ResponseEntity.ok(new EncryptResponse(
+                Base64.getEncoder().encodeToString(newEncryptedData.getCiphertext()),
+                Base64.getEncoder().encodeToString(newEncryptedData.getNonce()),
+                newEncryptedData.getKeyId()
+        ));
     }
 }

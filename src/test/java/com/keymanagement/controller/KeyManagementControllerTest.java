@@ -1,6 +1,8 @@
 package com.keymanagement.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.keymanagement.dto.CreateKeyRequest;
+import com.keymanagement.dto.CreateKeyResponse;
 import com.keymanagement.dto.DecryptRequest;
 import com.keymanagement.dto.EncryptRequest;
 import com.keymanagement.exception.DecryptionException;
@@ -46,23 +48,27 @@ class KeyManagementControllerTest {
     void testCreateKey_ShouldReturnKeyId() throws Exception {
         // Given
         String expectedKeyId = "550e8400-e29b-41d4-a716-446655440000";
-        when(keyManagementService.createKey()).thenReturn(expectedKeyId);
+        when(keyManagementService.createKey(any(CreateKeyRequest.class)))
+                .thenReturn(new CreateKeyResponse(expectedKeyId, "AES-256-GCM", 256));
 
         // When & Then
         mockMvc.perform(post("/api/keys")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.keyId").value(expectedKeyId));
+                .andExpect(jsonPath("$.keyId").value(expectedKeyId))
+                .andExpect(jsonPath("$.algorithm").value("AES-256-GCM"))
+                .andExpect(jsonPath("$.keySize").value(256));
 
-        verify(keyManagementService, times(1)).createKey();
+        verify(keyManagementService, times(1)).createKey(any(CreateKeyRequest.class));
     }
 
     @Test
     void testCreateKey_WithEmptyBody_ShouldWork() throws Exception {
         // Given
         String expectedKeyId = "550e8400-e29b-41d4-a716-446655440001";
-        when(keyManagementService.createKey()).thenReturn(expectedKeyId);
+        when(keyManagementService.createKey(null))
+                .thenReturn(new CreateKeyResponse(expectedKeyId, "AES-256-GCM", 256));
 
         // When & Then
         mockMvc.perform(post("/api/keys")
@@ -70,7 +76,7 @@ class KeyManagementControllerTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.keyId").value(expectedKeyId));
 
-        verify(keyManagementService, times(1)).createKey();
+                verify(keyManagementService, times(1)).createKey(null);
     }
 
     @Test

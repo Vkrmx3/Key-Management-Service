@@ -38,6 +38,11 @@ public class KeyStorageService {
      */
     @Transactional
     public String storeKey(SecretKey key) {
+        return storeKey(key, null);
+    }
+
+    @Transactional
+    public String storeKey(SecretKey key, String description) {
         String keyId = UUID.randomUUID().toString();
         
         KeyEntity keyEntity = new KeyEntity(
@@ -46,6 +51,7 @@ public class KeyStorageService {
                 key.getAlgorithm(),
                 key.getEncoded().length * 8 // key size in bits
         );
+            keyEntity.setDescription(description);
         
         keyRepository.save(keyEntity);
         long totalKeys = keyRepository.countByActiveTrue();
@@ -55,8 +61,11 @@ public class KeyStorageService {
 
     /**
      * Retrieves a key by its identifier.
+     * This method supports both:
+     * - Exact keyId lookups (for backward compatibility and specific version access)
+     * - Logical key ID lookups (returns current version)
      *
-     * @param keyId The UUID string identifier of the key
+     * @param keyId The UUID string identifier (can be physical keyId or logical key ID)
      * @return The SecretKey associated with the keyId
      * @throws KeyNotFoundException if the key does not exist
      */
@@ -64,23 +73,49 @@ public class KeyStorageService {
     public SecretKey getKey(String keyId) {
         log.debug("Retrieving key with ID: {}", LogSanitizer.sanitize(keyId));
         KeyEntity keyEntity = keyRepository.findByKeyIdAndActiveTrue(keyId)
-                .orElseThrow(() -> {
-                    log.warn("Key not found or inactive: {}", keyId);
-                    return new KeyNotFoundException(keyId);
+                .orElseGet(() -> {
+                    // If not found by keyId, try as logical key ID (get current version)
+                    return keyRepository.findByLogicalKeyIdAndCurrentVersionTrueAndActiveTrue(keyId)
+                            .orElseThrow(() -> {
+                    log.warn("Key not found or inactive: {}", LogSanitizer.sanitize(keyId));
+                                return new KeyNotFoundException(keyId);
+                            });
                 });
         
         return new SecretKeySpec(keyEntity.getKeyMaterial(), keyEntity.getAlgorithm());
     }
 
+    @Transactional(readOnly = true)
+    public String getCurrentKeyId(String keyId) {
+        return keyRepository.findByLogicalKeyIdAndCurrentVersionTrueAndActiveTrue(keyId)
+                .map(KeyEntity::getKeyId)
+                .orElseGet(() -> {
+                    KeyEntity physicalKey = keyRepository.findByKeyIdAndActiveTrue(keyId)
+                            .orElseThrow(() -> new KeyNotFoundException(keyId));
+                    if (Boolean.TRUE.equals(physicalKey.getCurrentVersion())) {
+                        return physicalKey.getKeyId();
+                    }
+                    return keyRepository.findByLogicalKeyIdAndCurrentVersionTrueAndActiveTrue(physicalKey.getLogicalKeyId())
+                            .map(KeyEntity::getKeyId)
+                            .orElseThrow(() -> new KeyNotFoundException(keyId));
+                });
+    }
+
     /**
      * Checks if a key exists in storage.
+     * Supports both exact keyId and logical key ID lookups.
      *
-     * @param keyId The UUID string identifier of the key
+     * @param keyId The UUID string identifier (can be physical keyId or logical key ID)
      * @return true if the key exists and is active, false otherwise
      */
     @Transactional(readOnly = true)
     public boolean keyExists(String keyId) {
-        return keyRepository.findByKeyIdAndActiveTrue(keyId).isPresent();
+        // Check by exact keyId first
+        if (keyRepository.findByKeyIdAndActiveTrue(keyId).isPresent()) {
+            return true;
+        }
+        // Check by logical key ID
+        return keyRepository.existsByLogicalKeyIdAndActiveTrue(keyId);
     }
 
     /**
@@ -126,5 +161,17 @@ public class KeyStorageService {
             keyRepository.save(keyEntity);
         });
         log.info("Marked all keys as inactive. {} keys deactivated", count);
+    }
+
+    /**
+     * Reconstructs a SecretKey from raw key material and algorithm.
+     * Used for key rotation and re-encryption scenarios.
+     *
+     * @param keyMaterial The raw key bytes
+     * @param algorithm The algorithm name (e.g., "AES")
+     * @return Reconstructed SecretKey
+     */
+    public SecretKey reconstructSecretKey(byte[] keyMaterial, String algorithm) {
+        return new SecretKeySpec(keyMaterial, algorithm);
     }
 }

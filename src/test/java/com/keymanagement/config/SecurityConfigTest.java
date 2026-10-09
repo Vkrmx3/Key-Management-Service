@@ -2,13 +2,18 @@ package com.keymanagement.config;
 
 import com.keymanagement.controller.AuthController;
 import com.keymanagement.controller.KeyManagementController;
+import com.keymanagement.controller.KeyRotationController;
 import com.keymanagement.dto.AuthResponse;
+import com.keymanagement.dto.CreateKeyResponse;
 import com.keymanagement.dto.LoginRequest;
 import com.keymanagement.dto.RegisterRequest;
+import com.keymanagement.dto.RotateKeyResponse;
+import com.keymanagement.model.EncryptedData;
 import com.keymanagement.security.CustomUserDetailsService;
 import com.keymanagement.security.JwtUtil;
 import com.keymanagement.service.AuthService;
 import com.keymanagement.service.KeyManagementService;
+import com.keymanagement.service.KeyRotationService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -29,9 +34,10 @@ import static org.mockito.Mockito.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@WebMvcTest({AuthController.class, KeyManagementController.class})
+@WebMvcTest({AuthController.class, KeyManagementController.class, KeyRotationController.class})
 @Import(SecurityConfig.class)
 class SecurityConfigTest {
 
@@ -44,6 +50,9 @@ class SecurityConfigTest {
     @MockitoBean
     private KeyManagementService keyManagementService;
 
+        @MockitoBean
+        private KeyRotationService keyRotationService;
+
     @MockitoBean
     private JwtUtil jwtUtil;
 
@@ -53,7 +62,7 @@ class SecurityConfigTest {
     @Test
     void testKeyCreation_WithBearerToken_ShouldNotRequireCsrfToken() throws Exception {
         mockValidBearerToken();
-        when(keyManagementService.createKey()).thenReturn("key-id");
+                when(keyManagementService.createKey(null)).thenReturn(new CreateKeyResponse("key-id", "AES-256-GCM", 256));
 
         mockMvc.perform(post("/api/keys")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer valid-token"))
@@ -61,7 +70,7 @@ class SecurityConfigTest {
                 .andExpect(jsonPath("$.keyId").value("key-id"))
                 .andExpect(result -> assertNull(result.getRequest().getSession(false)));
 
-        verify(keyManagementService).createKey();
+        verify(keyManagementService).createKey(null);
     }
 
     @Test
@@ -91,7 +100,7 @@ class SecurityConfigTest {
 
     @Test
     void testKeyCreation_WithCsrfToken_ShouldAllowNonBearerAuthentication() throws Exception {
-        when(keyManagementService.createKey()).thenReturn("key-id");
+                when(keyManagementService.createKey(null)).thenReturn(new CreateKeyResponse("key-id", "AES-256-GCM", 256));
 
         mockMvc.perform(post("/api/keys").with(user("testuser")).with(csrf()))
                 .andExpect(status().isCreated())
@@ -160,5 +169,62 @@ class SecurityConfigTest {
         when(jwtUtil.getUsernameFromToken("valid-token")).thenReturn("testuser");
         when(userDetailsService.loadUserByUsername("testuser"))
                 .thenReturn(User.withUsername("testuser").password("unused").roles("USER").build());
+    }
+
+    @Test
+    void testRotation_WithBearerToken_ShouldUseProtectedApiChain() throws Exception {
+        mockValidBearerToken();
+        when(keyRotationService.rotateKey("logical-key", null))
+                .thenReturn(new RotateKeyResponse("logical-key", 1, 2, "new-key"));
+
+        mockMvc.perform(post("/api/keys/logical-key/rotate")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer valid-token"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.newKeyId").value("new-key"));
+
+        verify(keyRotationService).rotateKey("logical-key", null);
+    }
+
+    @Test
+    void testReEncryption_WithBearerToken_ShouldReturnPhysicalKeyId() throws Exception {
+        mockValidBearerToken();
+        when(keyManagementService.reEncryptData("logical-key", 1, "AQ==", "AA=="))
+                .thenReturn(new EncryptedData(new byte[16], new byte[12], "new-key"));
+
+        mockMvc.perform(post("/api/keys/logical-key/reencrypt")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer valid-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"ciphertext\":\"AQ==\",\"nonce\":\"AA==\",\"sourceVersion\":1}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.keyId").value("new-key"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"rotate", "reencrypt"})
+    void testRotationWrites_RequireAuthenticationEvenWithCsrfToken(String operation) throws Exception {
+        mockMvc.perform(post("/api/keys/logical-key/" + operation).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isForbidden());
+
+        verifyNoInteractions(keyRotationService, keyManagementService);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"versions", "current-version"})
+    void testVersionReads_RequireAuthentication(String operation) throws Exception {
+        mockMvc.perform(get("/api/keys/logical-key/" + operation))
+                .andExpect(status().isForbidden());
+
+        verifyNoInteractions(keyRotationService);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"rotate", "reencrypt"})
+    void testRotationWrites_RequireCsrfForNonBearerAuthentication(String operation) throws Exception {
+        mockMvc.perform(post("/api/keys/logical-key/" + operation).with(user("testuser"))
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isForbidden());
+
+        verifyNoInteractions(keyRotationService, keyManagementService);
     }
 }

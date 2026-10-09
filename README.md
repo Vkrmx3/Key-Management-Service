@@ -228,6 +228,8 @@ http://localhost:8080/api/keys
 
 Creates a new encryption key with optional algorithm selection.
 
+Descriptions are persisted with the key and must not exceed 500 characters.
+
 **Endpoint**: `POST /api/keys`
 
 **Headers**:
@@ -249,6 +251,8 @@ Content-Type: application/json
 - `AES_192_GCM` - Enhanced security (192-bit key)
 - `AES_256_GCM` - Maximum security (256-bit key) **[DEFAULT]**
 - `CHACHA20_POLY1305` - Modern, software-optimized (256-bit key)
+
+The implementation uses the [JCA standard `ChaCha20-Poly1305` authenticated cipher](https://docs.oracle.com/en/java/javase/25/docs/specs/security/standard-names.html#cipher-algorithms), with 256-bit keys and fresh 96-bit nonces. CodeQL Java queries 1.11.12 omit this algorithm from their recognized secure-algorithm list, producing two `java/potentially-weak-cryptographic-algorithm` warnings at the cipher creation calls. Review those findings with this evidence; the rule has not been disabled. Regression tests verify tampering and wrong-key rejection as well as nonce freshness and rotation round trips.
 
 **Response**: `201 Created`
 ```json
@@ -282,7 +286,7 @@ curl -X POST http://localhost:8080/api/keys \
 
 ### 2. Encrypt Data
 
-Encrypts plaintext using a specific key.
+Encrypts plaintext using the current version of the key. Both a logical ID and a physical ID resolve to the current version of that key family for encryption.
 
 **Endpoint**: `POST /api/keys/{keyId}/encrypt`
 
@@ -302,6 +306,7 @@ Content-Type: application/json
 **Response**: `200 OK`
 ```json
 {
+  "keyId": "550e8400-e29b-41d4-a716-446655440000",
   "ciphertext": "Z3JhY2VmdWxseS1lbmNyeXB0ZWQtZGF0YQ==",
   "nonce": "AQIDBAUGBwgJCgsM"
 }
@@ -319,11 +324,11 @@ curl -X POST http://localhost:8080/api/keys/{keyId}/encrypt \
 - Plaintext is accepted as UTF-8 string
 - Ciphertext and nonce are Base64-encoded
 - A fresh 12-byte nonce is generated for each encryption
-- Store both ciphertext and nonce - you need both for decryption
+- Store the returned physical `keyId`, ciphertext, and nonce together; use that `keyId` for decryption even after further rotations
 
 ### 3. Decrypt Data
 
-Decrypts ciphertext using a specific key.
+Decrypts ciphertext using the physical `keyId` returned during encryption. Old versions remain available for decryption while active; existing ciphertext retains its original key ID.
 
 **Endpoint**: `POST /api/keys/{keyId}/decrypt`
 
@@ -359,6 +364,18 @@ curl -X POST http://localhost:8080/api/keys/{keyId}/decrypt \
 ## 🔄 Key Rotation
 
 The KMS supports key rotation with versioning, allowing you to rotate encryption keys while maintaining the ability to decrypt data encrypted with older versions.
+
+### Existing Database Upgrade
+
+Back up the database and stop the KMS before deploying this version to an existing database. Run [the versioning upgrade](src/main/resources/db/upgrade-key-versioning.sql) as the database owner:
+
+```bash
+psql -h localhost -U kms_user -d kms_db -v ON_ERROR_STOP=1 -f src/main/resources/db/upgrade-key-versioning.sql
+```
+
+The script preserves key IDs and material, backfills version 1, and enforces unique logical-key/version pairs. It is safe to rerun and does not reactivate retired keys. Fresh databases use the entity mapping; `ddl-auto=update` alone cannot safely backfill existing rows.
+
+Rotation preserves the algorithm and key size, serializes concurrent rotations of the same key, and never reuses inactive historical version numbers. Rotation reasons are limited to 500 characters.
 
 ### Key Rotation Endpoints
 
@@ -438,10 +455,13 @@ Content-Type: application/json
 **Response**: `200 OK`
 ```json
 {
+  "keyId": "660f9511-f39c-52e5-b827-557766551111",
   "ciphertext": "newly-encrypted-data",
   "nonce": "new-nonce"
 }
 ```
+
+Store the returned physical `keyId` with the re-encrypted data. `sourceVersion` must be at least 1; if omitted, decryption assumes the current version.
 
 ### Key Rotation Concepts
 
