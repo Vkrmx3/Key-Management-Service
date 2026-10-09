@@ -6,7 +6,9 @@ import com.keymanagement.dto.RotateKeyResponse;
 import com.keymanagement.entity.KeyEntity;
 import com.keymanagement.exception.KeyNotFoundException;
 import com.keymanagement.model.EncryptedData;
+import com.keymanagement.model.EncryptionAlgorithm;
 import com.keymanagement.repository.KeyRepository;
+import com.keymanagement.security.LogSanitizer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import javax.crypto.SecretKey;
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -51,7 +54,11 @@ public class KeyRotationService {
      */
     @Transactional
     public RotateKeyResponse rotateKey(String logicalKeyId, RotateKeyRequest request) {
-        logger.info("Rotating key with logical ID: {}", logicalKeyId);
+                logger.info("Rotating key with logical ID: {}", LogSanitizer.sanitize(logicalKeyId));
+
+                if (keyRepository.lockInitialVersion(logicalKeyId).isEmpty()) {
+                        throw new KeyNotFoundException(logicalKeyId);
+                }
 
         // Find the current version
         KeyEntity currentVersion = keyRepository
@@ -60,7 +67,15 @@ public class KeyRotationService {
 
         // Get the next version number
         Integer maxVersion = keyRepository.findMaxVersionByLogicalKeyId(logicalKeyId);
-        Integer newVersionNumber = (maxVersion != null ? maxVersion : currentVersion.getVersion()) + 1;
+        int newVersionNumber = (maxVersion != null ? maxVersion : currentVersion.getVersion()) + 1;
+
+        EncryptionAlgorithm algorithm = Arrays.stream(EncryptionAlgorithm.values())
+                .filter(candidate -> candidate.getAlgorithm().equals(currentVersion.getAlgorithm())
+                        && Integer.valueOf(candidate.getKeySize()).equals(currentVersion.getKeySize()))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Unsupported stored key algorithm or size"));
+        SecretKey newKey = cryptoService.generateKey(algorithm);
+        String newKeyId = UUID.randomUUID().toString();
 
         // Mark current version as not current
         currentVersion.setCurrentVersion(false);
@@ -69,10 +84,6 @@ public class KeyRotationService {
             currentVersion.setRotationReason(request.getReason());
         }
         keyRepository.save(currentVersion);
-
-        // Generate new key material
-        SecretKey newKey = cryptoService.generateKey();
-        String newKeyId = UUID.randomUUID().toString();
 
         // Create new version
         KeyEntity newVersion = new KeyEntity(
@@ -89,7 +100,7 @@ public class KeyRotationService {
         keyRepository.save(newVersion);
 
         logger.info("Key rotated successfully. Logical ID: {}, Old version: {}, New version: {}", 
-                   logicalKeyId, currentVersion.getVersion(), newVersionNumber);
+                   LogSanitizer.sanitize(logicalKeyId), currentVersion.getVersion(), newVersionNumber);
 
         RotateKeyResponse response = new RotateKeyResponse(
                 logicalKeyId,
@@ -109,7 +120,7 @@ public class KeyRotationService {
      */
     @Transactional(readOnly = true)
     public List<KeyVersionInfo> getKeyVersions(String logicalKeyId) {
-        logger.debug("Retrieving all versions for logical key: {}", logicalKeyId);
+                logger.debug("Retrieving all versions for logical key: {}", LogSanitizer.sanitize(logicalKeyId));
 
         List<KeyEntity> versions = keyRepository.findByLogicalKeyIdAndActiveTrueOrderByVersionDesc(logicalKeyId);
         
@@ -130,7 +141,7 @@ public class KeyRotationService {
      */
     @Transactional(readOnly = true)
     public KeyVersionInfo getCurrentVersion(String logicalKeyId) {
-        logger.debug("Retrieving current version for logical key: {}", logicalKeyId);
+                logger.debug("Retrieving current version for logical key: {}", LogSanitizer.sanitize(logicalKeyId));
 
         KeyEntity currentVersion = keyRepository
                 .findByLogicalKeyIdAndCurrentVersionTrueAndActiveTrue(logicalKeyId)
@@ -150,7 +161,8 @@ public class KeyRotationService {
      */
     @Transactional(readOnly = true)
     public EncryptedData reEncryptData(String logicalKeyId, Integer oldVersion, EncryptedData encryptedData) {
-        logger.info("Re-encrypting data from version {} to current version for key: {}", oldVersion, logicalKeyId);
+        logger.info("Re-encrypting data from version {} to current version for key: {}", oldVersion,
+                LogSanitizer.sanitize(logicalKeyId));
 
         // Get the old version key
         KeyEntity oldKeyEntity = keyRepository
@@ -186,7 +198,7 @@ public class KeyRotationService {
 
         logger.info("Data re-encrypted successfully from v{} to v{}", oldVersion, currentKeyEntity.getVersion());
 
-        return newEncryptedData;
+                return new EncryptedData(newEncryptedData.getCiphertext(), newEncryptedData.getNonce(), currentKeyEntity.getKeyId());
     }
 
     /**

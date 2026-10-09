@@ -1,13 +1,19 @@
 package com.keymanagement.repository;
 
 import com.keymanagement.entity.KeyEntity;
+import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.jdbc.datasource.init.ScriptUtils;
 import org.springframework.test.context.TestPropertySource;
 
+import java.sql.DriverManager;
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -21,6 +27,9 @@ class KeyRepositoryTest {
 
     @Autowired
     private KeyRepository keyRepository;
+
+    @Autowired
+    private EntityManager entityManager;
 
     private KeyEntity testKeyEntity;
 
@@ -38,6 +47,7 @@ class KeyRepositoryTest {
     void testSave_ShouldPersistKeyEntity() {
         // When
         KeyEntity saved = keyRepository.save(testKeyEntity);
+        entityManager.flush(); // Flush to trigger @CreationTimestamp
 
         // Then
         assertNotNull(saved);
@@ -174,7 +184,7 @@ class KeyRepositoryTest {
         KeyEntity keyEntity = new KeyEntity("large-key", keyMaterial, "AES", 256);
 
         // When
-        KeyEntity saved = keyRepository.save(keyEntity);
+        keyRepository.save(keyEntity);
         KeyEntity retrieved = keyRepository.findById("large-key").orElseThrow();
 
         // Then
@@ -186,6 +196,7 @@ class KeyRepositoryTest {
     void testKeyEntity_CreatedAtShouldBeAutoSet() {
         // Given & When
         KeyEntity saved = keyRepository.save(testKeyEntity);
+        entityManager.flush(); // Flush to trigger @CreationTimestamp
 
         // Then
         assertNotNull(saved.getCreatedAt());
@@ -201,5 +212,75 @@ class KeyRepositoryTest {
 
         // Then
         assertTrue(saved.getActive());
+    }
+
+    @Test
+    void testMaxVersion_IncludesInactiveHistory() {
+        KeyEntity current = new KeyEntity("current", "logical-key", 1, new byte[32], "AES", 256);
+        KeyEntity retired = new KeyEntity("retired", "logical-key", 3, new byte[32], "AES", 256);
+        retired.setActive(false);
+        retired.setCurrentVersion(false);
+        keyRepository.saveAndFlush(current);
+        keyRepository.saveAndFlush(retired);
+
+        assertEquals(3, keyRepository.findMaxVersionByLogicalKeyId("logical-key"));
+    }
+
+    @Test
+    void testDuplicateLogicalVersion_IsRejected() {
+        keyRepository.saveAndFlush(new KeyEntity("first", "logical-key", 1, new byte[32], "AES", 256));
+        KeyEntity duplicate = new KeyEntity("duplicate", "logical-key", 1, new byte[32], "AES", 256);
+
+        assertThrows(DataIntegrityViolationException.class, () -> keyRepository.saveAndFlush(duplicate));
+    }
+
+    @Test
+    void testVersioningUpgrade_PreservesLegacyKeysAndIsIdempotent() throws Exception {
+        String url = "jdbc:h2:mem:versioning-upgrade-" + UUID.randomUUID() + ";MODE=PostgreSQL";
+        ClassPathResource migration = new ClassPathResource("db/upgrade-key-versioning.sql");
+        try (var connection = DriverManager.getConnection(url, "sa", "")) {
+            try (var statement = connection.createStatement()) {
+                statement.execute("CREATE TABLE encryption_keys (key_id VARCHAR(36) PRIMARY KEY, "
+                        + "key_material BYTEA NOT NULL, algorithm VARCHAR(50) NOT NULL, key_size INTEGER NOT NULL, "
+                        + "created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, description VARCHAR(500), active BOOLEAN NOT NULL)");
+            }
+            byte[] originalMaterial = new byte[32];
+            originalMaterial[0] = 42;
+            try (var insert = connection.prepareStatement("INSERT INTO encryption_keys "
+                    + "(key_id, key_material, algorithm, key_size, description, active) VALUES (?, ?, ?, ?, ?, ?)")) {
+                insert.setString(1, "legacy-key");
+                insert.setBytes(2, originalMaterial);
+                insert.setString(3, "AES");
+                insert.setInt(4, 256);
+                insert.setString(5, "Existing key");
+                insert.setBoolean(6, true);
+                insert.executeUpdate();
+            }
+
+            ScriptUtils.executeSqlScript(connection, migration);
+            try (var statement = connection.createStatement();
+                 var result = statement.executeQuery("SELECT * FROM encryption_keys WHERE key_id = 'legacy-key'")) {
+                assertTrue(result.next());
+                assertEquals("legacy-key", result.getString("logical_key_id"));
+                assertEquals(1, result.getInt("version"));
+                assertTrue(result.getBoolean("current_version"));
+                assertTrue(result.getBoolean("active"));
+                assertArrayEquals(originalMaterial, result.getBytes("key_material"));
+                assertEquals("Existing key", result.getString("description"));
+            }
+
+            try (var statement = connection.createStatement()) {
+                statement.executeUpdate("UPDATE encryption_keys SET current_version = FALSE, active = FALSE WHERE key_id = 'legacy-key'");
+            }
+            ScriptUtils.executeSqlScript(connection, migration);
+            try (var statement = connection.createStatement();
+                 var result = statement.executeQuery("SELECT * FROM encryption_keys WHERE key_id = 'legacy-key'")) {
+                assertTrue(result.next());
+                assertFalse(result.getBoolean("current_version"));
+                assertFalse(result.getBoolean("active"));
+                assertEquals(1, result.getInt("version"));
+                assertArrayEquals(originalMaterial, result.getBytes("key_material"));
+            }
+        }
     }
 }

@@ -39,7 +39,7 @@ public enum EncryptionAlgorithm {
      * - Performance: Excellent on software (no AES-NI needed)
      * - Use Case: Mobile devices, non-AES hardware
      */
-    CHACHA20_POLY1305("ChaCha20", "ChaCha20-Poly1305/None/NoPadding", 256, 12, 128);
+    CHACHA20_POLY1305("ChaCha20", "ChaCha20-Poly1305", 256, 12, 128);
 
     private final String algorithm;
     private final String transformation;

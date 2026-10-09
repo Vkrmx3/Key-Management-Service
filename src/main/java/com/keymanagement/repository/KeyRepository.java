@@ -1,9 +1,10 @@
 package com.keymanagement.repository;
 
 import com.keymanagement.entity.KeyEntity;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
-import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.Optional;
@@ -11,8 +12,11 @@ import java.util.Optional;
 /**
  * JPA Repository for encryption keys with versioning support.
  */
-@Repository
 public interface KeyRepository extends JpaRepository<KeyEntity, String> {
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT k FROM KeyEntity k WHERE k.logicalKeyId = ?1 AND k.version = 1")
+    Optional<KeyEntity> lockInitialVersion(String logicalKeyId);
 
     /**
      * Find an active key by its ID.
@@ -61,7 +65,7 @@ public interface KeyRepository extends JpaRepository<KeyEntity, String> {
      * @param logicalKeyId The logical key identifier
      * @return The maximum version number, or null if no versions exist
      */
-    @Query("SELECT MAX(k.version) FROM KeyEntity k WHERE k.logicalKeyId = ?1 AND k.active = true")
+    @Query("SELECT MAX(k.version) FROM KeyEntity k WHERE k.logicalKeyId = ?1")
     Integer findMaxVersionByLogicalKeyId(String logicalKeyId);
 
     /**

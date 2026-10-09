@@ -1,21 +1,36 @@
 package com.keymanagement.integration;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.keymanagement.dto.CreateKeyResponse;
 import com.keymanagement.dto.DecryptRequest;
 import com.keymanagement.dto.DecryptResponse;
 import com.keymanagement.dto.EncryptRequest;
 import com.keymanagement.dto.EncryptResponse;
+import com.keymanagement.dto.RotateKeyResponse;
 import com.keymanagement.entity.KeyEntity;
+import com.keymanagement.model.EncryptionAlgorithm;
 import com.keymanagement.repository.KeyRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
+
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -25,6 +40,8 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @TestPropertySource(locations = "classpath:application.properties")
+@ActiveProfiles("integration-test")
+@Import(IntegrationTestSecurityConfig.class)
 class PersistenceIntegrationTest {
 
     @LocalServerPort
@@ -229,7 +246,130 @@ class PersistenceIntegrationTest {
         assertNotEquals(response1.getBody().getCiphertext(), response2.getBody().getCiphertext());
     }
 
-    // Helper methods
+        @ParameterizedTest
+        @EnumSource(EncryptionAlgorithm.class)
+        void testRotationLifecycle_PreservesOldDataAndEncryptsWithCurrentVersion(EncryptionAlgorithm algorithm) {
+        ResponseEntity<CreateKeyResponse> created = restTemplate.postForEntity(baseUrl,
+            Map.of("algorithm", algorithm.name()), CreateKeyResponse.class);
+        assertEquals(HttpStatus.CREATED, created.getStatusCode());
+        CreateKeyResponse creation = created.getBody();
+        assertNotNull(creation);
+        assertEquals(algorithm.getDisplayName(), creation.getAlgorithm());
+        assertEquals(algorithm.getKeySize(), creation.getKeySize());
+        String logicalKeyId = creation.getKeyId();
+        String plaintext = "Versioned data for " + algorithm.name();
+        JsonNode originalEncrypted = encryptWithMetadata(logicalKeyId, plaintext);
+
+        ResponseEntity<RotateKeyResponse> rotationResponse = restTemplate.postForEntity(
+            baseUrl + "/" + logicalKeyId + "/rotate", Map.of("reason", "Lifecycle test"), RotateKeyResponse.class);
+        assertEquals(HttpStatus.CREATED, rotationResponse.getStatusCode());
+        RotateKeyResponse rotation = rotationResponse.getBody();
+        assertNotNull(rotation);
+        assertEquals(1, rotation.getOldVersion());
+        assertEquals(2, rotation.getNewVersion());
+        KeyEntity newKey = keyRepository.findById(rotation.getNewKeyId()).orElseThrow();
+        assertEquals(algorithm.getAlgorithm(), newKey.getAlgorithm());
+        assertEquals(algorithm.getKeySizeBytes(), newKey.getKeyMaterial().length);
+
+        JsonNode newlyEncrypted = encryptWithMetadata(logicalKeyId, plaintext);
+        assertDecryptsWith(rotation.getNewKeyId(), newlyEncrypted, plaintext);
+        assertEquals(rotation.getNewKeyId(), newlyEncrypted.path("keyId").asText());
+        assertDecryptsWith(logicalKeyId, originalEncrypted, plaintext);
+
+        ResponseEntity<JsonNode> reencryptedResponse = restTemplate.postForEntity(
+            baseUrl + "/" + logicalKeyId + "/reencrypt",
+            Map.of("ciphertext", originalEncrypted.path("ciphertext").asText(),
+                "nonce", originalEncrypted.path("nonce").asText(), "sourceVersion", 1), JsonNode.class);
+        assertEquals(HttpStatus.OK, reencryptedResponse.getStatusCode());
+        JsonNode reencrypted = reencryptedResponse.getBody();
+        assertNotNull(reencrypted);
+        assertEquals(rotation.getNewKeyId(), reencrypted.path("keyId").asText());
+        assertDecryptsWith(rotation.getNewKeyId(), reencrypted, plaintext);
+        assertEquals(1, keyRepository.findAll().stream().filter(KeyEntity::getCurrentVersion).count());
+        }
+
+        private JsonNode encryptWithMetadata(String keyId, String plaintext) {
+        ResponseEntity<JsonNode> response = restTemplate.postForEntity(baseUrl + "/" + keyId + "/encrypt",
+            new EncryptRequest(plaintext), JsonNode.class);
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        JsonNode body = response.getBody();
+        assertNotNull(body);
+        return body;
+        }
+
+    @Test
+    void testConcurrentRotations_KeepOneCurrentVersion() throws Exception {
+        String logicalKeyId = createKey();
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        Callable<ResponseEntity<RotateKeyResponse>> rotate = () -> {
+            ready.countDown();
+            assertTrue(start.await(10, TimeUnit.SECONDS));
+            return restTemplate.postForEntity(baseUrl + "/" + logicalKeyId + "/rotate", null, RotateKeyResponse.class);
+        };
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var firstRotation = executor.submit(rotate);
+            var secondRotation = executor.submit(rotate);
+            assertTrue(ready.await(10, TimeUnit.SECONDS));
+            start.countDown();
+            ResponseEntity<RotateKeyResponse> first = firstRotation.get(20, TimeUnit.SECONDS);
+            ResponseEntity<RotateKeyResponse> second = secondRotation.get(20, TimeUnit.SECONDS);
+            assertEquals(HttpStatus.CREATED, first.getStatusCode());
+            assertEquals(HttpStatus.CREATED, second.getStatusCode());
+            RotateKeyResponse firstBody = first.getBody();
+            RotateKeyResponse secondBody = second.getBody();
+            assertNotNull(firstBody);
+            assertNotNull(secondBody);
+            assertEquals(List.of(2, 3), Stream.of(firstBody.getNewVersion(), secondBody.getNewVersion()).sorted().toList());
+            List<KeyEntity> versions = keyRepository.findByLogicalKeyIdAndActiveTrueOrderByVersionDesc(logicalKeyId);
+            assertEquals(List.of(3, 2, 1), versions.stream().map(KeyEntity::getVersion).toList());
+            assertEquals(1, versions.stream().filter(KeyEntity::getCurrentVersion).count());
+        }
+    }
+
+    @Test
+    void testCreateKey_OversizedDescription_IsRejected() {
+        ResponseEntity<String> response = restTemplate.postForEntity(baseUrl,
+                Map.of("description", "x".repeat(501)), String.class);
+
+        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+        assertEquals(0, keyRepository.count());
+    }
+
+    @Test
+    void testRotateKey_OversizedReason_IsRejected() {
+        String keyId = createKey();
+        ResponseEntity<String> response = restTemplate.postForEntity(baseUrl + "/" + keyId + "/rotate",
+                Map.of("reason", "x".repeat(501)), String.class);
+
+        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+        assertEquals(1, keyRepository.count());
+        assertTrue(keyRepository.findById(keyId).orElseThrow().getCurrentVersion());
+    }
+
+    @Test
+    void testReEncrypt_InvalidSourceVersion_IsRejected() {
+        String keyId = createKey();
+        JsonNode encrypted = encryptWithMetadata(keyId, "Version validation");
+        ResponseEntity<String> response = restTemplate.postForEntity(baseUrl + "/" + keyId + "/reencrypt",
+                Map.of("ciphertext", encrypted.path("ciphertext").asText(),
+                        "nonce", encrypted.path("nonce").asText(), "sourceVersion", 0), String.class);
+
+        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+    }
+
+        private void assertDecryptsWith(String keyId, JsonNode encrypted, String plaintext) {
+        ResponseEntity<DecryptResponse> response = restTemplate.postForEntity(baseUrl + "/" + keyId + "/decrypt",
+            new DecryptRequest(encrypted.path("ciphertext").asText(), encrypted.path("nonce").asText()),
+            DecryptResponse.class);
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        DecryptResponse body = response.getBody();
+        assertNotNull(body);
+        assertEquals(plaintext, body.getPlaintext());
+        }
+
+        // Helper methods
 
     private String createKey() {
         ResponseEntity<CreateKeyResponse> response = restTemplate.postForEntity(

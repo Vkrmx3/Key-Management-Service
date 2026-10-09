@@ -4,6 +4,7 @@ import com.keymanagement.dto.CreateKeyRequest;
 import com.keymanagement.dto.CreateKeyResponse;
 import com.keymanagement.model.EncryptedData;
 import com.keymanagement.model.EncryptionAlgorithm;
+import com.keymanagement.security.LogSanitizer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -39,7 +40,7 @@ public class KeyManagementService {
      * @return The unique identifier for the created key
      */
     public String createKey() {
-        return createKey(null);
+        return createKey(null).getKeyId();
     }
 
     /**
@@ -57,7 +58,7 @@ public class KeyManagementService {
 
         log.debug("Creating new encryption key with algorithm: {}", algorithm.getDisplayName());
         SecretKey key = cryptoService.generateKey(algorithm);
-        String keyId = keyStorageService.storeKey(key);
+        String keyId = keyStorageService.storeKey(key, request != null ? request.getDescription() : null);
         log.debug("New {} key created and stored with ID: {}", algorithm.getDisplayName(), keyId);
         
         return new CreateKeyResponse(keyId, algorithm.getDisplayName(), algorithm.getKeySize());
@@ -71,12 +72,13 @@ public class KeyManagementService {
      * @return EncryptedData containing ciphertext and nonce
      */
     public EncryptedData encryptData(String keyId, String plaintext) {
-        log.debug("Encrypting data with key ID: {}", keyId);
-        SecretKey key = keyStorageService.getKey(keyId);
+        log.debug("Encrypting data with key ID: {}", LogSanitizer.sanitize(keyId));
+        String encryptionKeyId = keyStorageService.getCurrentKeyId(keyId);
+        SecretKey key = keyStorageService.getKey(encryptionKeyId);
         byte[] plaintextBytes = plaintext.getBytes(StandardCharsets.UTF_8);
         EncryptedData encryptedData = cryptoService.encrypt(key, plaintextBytes);
-        log.debug("Data encrypted successfully with key ID: {}", keyId);
-        return encryptedData;
+        log.debug("Data encrypted successfully with key ID: {}", LogSanitizer.sanitize(keyId));
+        return new EncryptedData(encryptedData.getCiphertext(), encryptedData.getNonce(), encryptionKeyId);
     }
 
     /**
@@ -88,12 +90,12 @@ public class KeyManagementService {
      * @return The decrypted plaintext string
      */
     public String decryptData(String keyId, String ciphertextB64, String nonceB64) {
-        log.debug("Decrypting data with key ID: {}", keyId);
+        log.debug("Decrypting data with key ID: {}", LogSanitizer.sanitize(keyId));
         SecretKey key = keyStorageService.getKey(keyId);
         byte[] ciphertext = Base64.getDecoder().decode(ciphertextB64);
         byte[] nonce = Base64.getDecoder().decode(nonceB64);
         byte[] plaintextBytes = cryptoService.decrypt(key, ciphertext, nonce);
-        log.debug("Data decrypted successfully with key ID: {}", keyId);
+        log.debug("Data decrypted successfully with key ID: {}", LogSanitizer.sanitize(keyId));
         return new String(plaintextBytes, StandardCharsets.UTF_8);
     }
 
@@ -109,7 +111,7 @@ public class KeyManagementService {
      */
     public EncryptedData reEncryptData(String logicalKeyId, Integer sourceVersion, 
                                       String ciphertextB64, String nonceB64) {
-        log.debug("Re-encrypting data for logical key ID: {}", logicalKeyId);
+        log.debug("Re-encrypting data for logical key ID: {}", LogSanitizer.sanitize(logicalKeyId));
         
         byte[] ciphertext = Base64.getDecoder().decode(ciphertextB64);
         byte[] nonce = Base64.getDecoder().decode(nonceB64);
@@ -127,7 +129,7 @@ public class KeyManagementService {
                 oldEncryptedData
         );
         
-        log.debug("Data re-encrypted successfully for logical key ID: {}", logicalKeyId);
+            log.debug("Data re-encrypted successfully for logical key ID: {}", LogSanitizer.sanitize(logicalKeyId));
         return newEncryptedData;
     }
 }

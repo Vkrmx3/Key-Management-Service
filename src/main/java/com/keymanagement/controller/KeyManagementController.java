@@ -2,6 +2,7 @@ package com.keymanagement.controller;
 
 import com.keymanagement.dto.*;
 import com.keymanagement.model.EncryptedData;
+import com.keymanagement.security.LogSanitizer;
 import com.keymanagement.service.KeyManagementService;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
@@ -35,9 +36,10 @@ public class KeyManagementController {
      * @return Response containing the new key ID, algorithm, and key size
      */
     @PostMapping
-    public ResponseEntity<CreateKeyResponse> createKey(@RequestBody(required = false) CreateKeyRequest request) {
+        public ResponseEntity<CreateKeyResponse> createKey(@Valid @RequestBody(required = false) CreateKeyRequest request) {
         log.info("Received request to create new encryption key with algorithm: {}", 
-                request != null && request.getAlgorithm() != null ? request.getAlgorithm() : "default (AES-256-GCM)");
+                request != null && request.getAlgorithm() != null
+                        ? LogSanitizer.sanitize(request.getAlgorithm()) : "default (AES-256-GCM)");
         
         CreateKeyResponse response = keyManagementService.createKey(request);
         
@@ -59,15 +61,15 @@ public class KeyManagementController {
             @PathVariable String keyId,
             @Valid @RequestBody EncryptRequest request) {
         
-        log.info("Received encryption request for key ID: {}", keyId);
+        log.info("Received encryption request for key ID: {}", LogSanitizer.sanitize(keyId));
         EncryptedData encryptedData = keyManagementService.encryptData(keyId, request.getPlaintext());
         
         // Encode ciphertext and nonce to Base64 for JSON transport
         String ciphertextB64 = Base64.getEncoder().encodeToString(encryptedData.getCiphertext());
         String nonceB64 = Base64.getEncoder().encodeToString(encryptedData.getNonce());
         
-        log.info("Successfully encrypted data for key ID: {}", keyId);
-        return ResponseEntity.ok(new EncryptResponse(ciphertextB64, nonceB64));
+        log.info("Successfully encrypted data for key ID: {}", LogSanitizer.sanitize(keyId));
+        return ResponseEntity.ok(new EncryptResponse(ciphertextB64, nonceB64, encryptedData.getKeyId()));
     }
 
     /**
@@ -82,14 +84,14 @@ public class KeyManagementController {
             @PathVariable String keyId,
             @Valid @RequestBody DecryptRequest request) {
         
-        log.info("Received decryption request for key ID: {}", keyId);
+        log.info("Received decryption request for key ID: {}", LogSanitizer.sanitize(keyId));
         String plaintext = keyManagementService.decryptData(
                 keyId, 
                 request.getCiphertext(), 
                 request.getNonce()
         );
         
-        log.info("Successfully decrypted data for key ID: {}", keyId);
+        log.info("Successfully decrypted data for key ID: {}", LogSanitizer.sanitize(keyId));
         return ResponseEntity.ok(new DecryptResponse(plaintext));
     }
 
@@ -106,7 +108,7 @@ public class KeyManagementController {
             @PathVariable String keyId,
             @Valid @RequestBody ReEncryptRequest request) {
         
-        log.info("Received re-encryption request for logical key ID: {}", keyId);
+                log.info("Received re-encryption request for logical key ID: {}", LogSanitizer.sanitize(keyId));
         
         EncryptedData newEncryptedData = keyManagementService.reEncryptData(
                 keyId,
@@ -115,11 +117,12 @@ public class KeyManagementController {
                 request.getNonce()
         );
         
-        log.info("Successfully re-encrypted data for logical key ID: {}", keyId);
+        log.info("Successfully re-encrypted data for logical key ID: {}", LogSanitizer.sanitize(keyId));
         
         return ResponseEntity.ok(new EncryptResponse(
-                newEncryptedData.getCiphertext(),
-                newEncryptedData.getNonce()
+                Base64.getEncoder().encodeToString(newEncryptedData.getCiphertext()),
+                Base64.getEncoder().encodeToString(newEncryptedData.getNonce()),
+                newEncryptedData.getKeyId()
         ));
     }
 }

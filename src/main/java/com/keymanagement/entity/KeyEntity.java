@@ -17,7 +17,7 @@ import java.time.LocalDateTime;
  */
 @Entity
 @Table(name = "encryption_keys", indexes = {
-    @Index(name = "idx_logical_key_version", columnList = "logical_key_id, version"),
+    @Index(name = "uq_encryption_keys_logical_version", columnList = "logical_key_id, version", unique = true),
     @Index(name = "idx_logical_key_current", columnList = "logical_key_id, current_version"),
     @Index(name = "idx_active", columnList = "active")
 })

@@ -299,9 +299,9 @@ class KeyStorageServiceTest {
     @Test
     void testGetKeyCount_ShouldOnlyCountActiveKeys() throws NoSuchAlgorithmException {
         // Given
-        String keyId1 = keyStorageService.storeKey(generateTestKey());
+        keyStorageService.storeKey(generateTestKey());
         String keyId2 = keyStorageService.storeKey(generateTestKey());
-        String keyId3 = keyStorageService.storeKey(generateTestKey());
+        keyStorageService.storeKey(generateTestKey());
         
         // Deactivate one key
         keyStorageService.removeKey(keyId2);
@@ -319,9 +319,9 @@ class KeyStorageServiceTest {
     @Test
     void testClearAll_ShouldDeactivateAllKeys() throws NoSuchAlgorithmException {
         // Given
-        String keyId1 = keyStorageService.storeKey(generateTestKey());
-        String keyId2 = keyStorageService.storeKey(generateTestKey());
-        String keyId3 = keyStorageService.storeKey(generateTestKey());
+        keyStorageService.storeKey(generateTestKey());
+        keyStorageService.storeKey(generateTestKey());
+        keyStorageService.storeKey(generateTestKey());
 
         // When
         keyStorageService.clearAll();

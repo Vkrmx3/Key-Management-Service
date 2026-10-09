@@ -3,7 +3,9 @@ package com.keymanagement.controller;
 import com.keymanagement.dto.KeyVersionInfo;
 import com.keymanagement.dto.RotateKeyRequest;
 import com.keymanagement.dto.RotateKeyResponse;
+import com.keymanagement.security.LogSanitizer;
 import com.keymanagement.service.KeyRotationService;
+import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -41,14 +43,14 @@ public class KeyRotationController {
     @PostMapping("/{logicalKeyId}/rotate")
     public ResponseEntity<RotateKeyResponse> rotateKey(
             @PathVariable String logicalKeyId,
-            @RequestBody(required = false) RotateKeyRequest request) {
+            @Valid @RequestBody(required = false) RotateKeyRequest request) {
         
-        logger.info("Key rotation request received for logical key: {}", logicalKeyId);
+        logger.info("Key rotation request received for logical key: {}", LogSanitizer.sanitize(logicalKeyId));
         
         RotateKeyResponse response = keyRotationService.rotateKey(logicalKeyId, request);
         
         logger.info("Key rotated successfully: {} from v{} to v{}", 
-                   logicalKeyId, response.getOldVersion(), response.getNewVersion());
+                   LogSanitizer.sanitize(logicalKeyId), response.getOldVersion(), response.getNewVersion());
         
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
@@ -61,11 +63,11 @@ public class KeyRotationController {
      */
     @GetMapping("/{logicalKeyId}/versions")
     public ResponseEntity<List<KeyVersionInfo>> getKeyVersions(@PathVariable String logicalKeyId) {
-        logger.info("Retrieving versions for logical key: {}", logicalKeyId);
+        logger.info("Retrieving versions for logical key: {}", LogSanitizer.sanitize(logicalKeyId));
         
         List<KeyVersionInfo> versions = keyRotationService.getKeyVersions(logicalKeyId);
         
-        logger.info("Retrieved {} versions for logical key: {}", versions.size(), logicalKeyId);
+        logger.info("Retrieved {} versions for logical key: {}", versions.size(), LogSanitizer.sanitize(logicalKeyId));
         
         return ResponseEntity.ok(versions);
     }
@@ -78,11 +80,11 @@ public class KeyRotationController {
      */
     @GetMapping("/{logicalKeyId}/current-version")
     public ResponseEntity<KeyVersionInfo> getCurrentVersion(@PathVariable String logicalKeyId) {
-        logger.info("Retrieving current version for logical key: {}", logicalKeyId);
+        logger.info("Retrieving current version for logical key: {}", LogSanitizer.sanitize(logicalKeyId));
         
         KeyVersionInfo currentVersion = keyRotationService.getCurrentVersion(logicalKeyId);
         
-        logger.info("Current version for {}: v{}", logicalKeyId, currentVersion.getVersion());
+        logger.info("Current version for {}: v{}", LogSanitizer.sanitize(logicalKeyId), currentVersion.getVersion());
         
         return ResponseEntity.ok(currentVersion);
     }

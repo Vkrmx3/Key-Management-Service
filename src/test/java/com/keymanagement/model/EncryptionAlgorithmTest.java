@@ -38,7 +38,7 @@ class EncryptionAlgorithmTest {
     void testChaCha20Poly1305Properties() {
         EncryptionAlgorithm alg = EncryptionAlgorithm.CHACHA20_POLY1305;
         assertEquals("ChaCha20", alg.getAlgorithm());
-        assertEquals("ChaCha20-Poly1305/None/NoPadding", alg.getTransformation());
+        assertEquals("ChaCha20-Poly1305", alg.getTransformation());
         assertEquals(256, alg.getKeySize());
         assertEquals(32, alg.getKeySizeBytes());
         assertEquals(12, alg.getNonceSize());

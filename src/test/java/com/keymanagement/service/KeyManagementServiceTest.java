@@ -1,11 +1,17 @@
 package com.keymanagement.service;
 
+import com.keymanagement.dto.CreateKeyRequest;
+import com.keymanagement.dto.CreateKeyResponse;
+import com.keymanagement.entity.KeyEntity;
 import com.keymanagement.exception.DecryptionException;
 import com.keymanagement.exception.KeyNotFoundException;
 import com.keymanagement.model.EncryptedData;
+import com.keymanagement.model.EncryptionAlgorithm;
+import com.keymanagement.repository.KeyRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -43,16 +49,33 @@ class KeyManagementServiceTest {
     void testCreateKey_ShouldGenerateAndStoreKey() {
         // Given
         String expectedKeyId = "test-key-id-123";
-        when(cryptoService.generateKey()).thenReturn(testKey);
-        when(keyStorageService.storeKey(testKey)).thenReturn(expectedKeyId);
+        when(cryptoService.generateKey(EncryptionAlgorithm.AES_256_GCM)).thenReturn(testKey);
+        when(keyStorageService.storeKey(testKey, null)).thenReturn(expectedKeyId);
 
         // When
         String keyId = keyManagementService.createKey();
 
         // Then
         assertEquals(expectedKeyId, keyId);
-        verify(cryptoService, times(1)).generateKey();
-        verify(keyStorageService, times(1)).storeKey(testKey);
+        verify(cryptoService, times(1)).generateKey(EncryptionAlgorithm.AES_256_GCM);
+        verify(keyStorageService, times(1)).storeKey(testKey, null);
+    }
+
+    @Test
+    void testCreateKey_PersistsRequestedDescriptionAndAlgorithm() {
+        KeyRepository repository = mock(KeyRepository.class);
+        KeyManagementService service = new KeyManagementService(new CryptoService(),
+                new KeyStorageService(repository), mock(KeyRotationService.class));
+
+        CreateKeyResponse response = service.createKey(new CreateKeyRequest("AES-128-GCM", "Payment key"));
+
+        ArgumentCaptor<KeyEntity> saved = ArgumentCaptor.forClass(KeyEntity.class);
+        verify(repository).save(saved.capture());
+        assertEquals("Payment key", saved.getValue().getDescription());
+        assertEquals("AES", saved.getValue().getAlgorithm());
+        assertEquals(128, saved.getValue().getKeySize());
+        assertEquals(16, saved.getValue().getKeyMaterial().length);
+        assertEquals(saved.getValue().getKeyId(), response.getKeyId());
     }
 
     @Test
@@ -60,11 +83,11 @@ class KeyManagementServiceTest {
         // Given
         String keyId = "test-key-id";
         String plaintext = "Hello, World!";
-        byte[] plaintextBytes = plaintext.getBytes(StandardCharsets.UTF_8);
         byte[] mockCiphertext = "encrypted-data".getBytes();
         byte[] mockNonce = new byte[12];
         EncryptedData mockEncryptedData = new EncryptedData(mockCiphertext, mockNonce);
 
+        when(keyStorageService.getCurrentKeyId(keyId)).thenReturn(keyId);
         when(keyStorageService.getKey(keyId)).thenReturn(testKey);
         when(cryptoService.encrypt(eq(testKey), any(byte[].class))).thenReturn(mockEncryptedData);
 
@@ -75,6 +98,7 @@ class KeyManagementServiceTest {
         assertNotNull(result);
         assertArrayEquals(mockCiphertext, result.getCiphertext());
         assertArrayEquals(mockNonce, result.getNonce());
+        assertEquals(keyId, result.getKeyId());
         verify(keyStorageService, times(1)).getKey(keyId);
         verify(cryptoService, times(1)).encrypt(eq(testKey), any(byte[].class));
     }
@@ -84,13 +108,13 @@ class KeyManagementServiceTest {
         // Given
         String invalidKeyId = "invalid-key-id";
         String plaintext = "Test data";
-        when(keyStorageService.getKey(invalidKeyId)).thenThrow(new KeyNotFoundException(invalidKeyId));
+        when(keyStorageService.getCurrentKeyId(invalidKeyId)).thenThrow(new KeyNotFoundException(invalidKeyId));
 
         // When & Then
         assertThrows(KeyNotFoundException.class, () -> {
             keyManagementService.encryptData(invalidKeyId, plaintext);
         });
-        verify(keyStorageService, times(1)).getKey(invalidKeyId);
+        verify(keyStorageService, times(1)).getCurrentKeyId(invalidKeyId);
         verify(cryptoService, never()).encrypt(any(), any());
     }
 
@@ -169,6 +193,7 @@ class KeyManagementServiceTest {
         byte[] mockNonce = new byte[12];
         EncryptedData mockEncryptedData = new EncryptedData(mockCiphertext, mockNonce);
 
+        when(keyStorageService.getCurrentKeyId(keyId)).thenReturn(keyId);
         when(keyStorageService.getKey(keyId)).thenReturn(testKey);
         when(cryptoService.encrypt(eq(testKey), any(byte[].class))).thenReturn(mockEncryptedData);
 

@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: kms-postgres
+    environment:
+      POSTGRES_DB: kms_db
+      POSTGRES_USER: kms_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-kms_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - kms-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kms_user -d kms_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # KMS Application
+  kms-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kms-app
+    environment:
+      # Database configuration
+      DB_URL: jdbc:postgresql://postgres:5432/kms_db
+      DB_USERNAME: kms_user
+      DB_PASSWORD: ${DB_PASSWORD:-kms_password}
+      
+      # JWT configuration
+      JWT_SECRET: ${JWT_SECRET:-vClmNcZMTSJWfPSLSMjVYpIzsy69WVPlrujBOlAmnNY=}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-86400000}
+      
+      # Spring profiles
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
+      
+      # JVM options
+      JAVA_OPTS: "-Xms256m -Xmx512m -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - kms-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+
+networks:
+  kms-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+    driver: local

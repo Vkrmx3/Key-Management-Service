@@ -6,15 +6,20 @@ import com.keymanagement.dto.RotateKeyResponse;
 import com.keymanagement.entity.KeyEntity;
 import com.keymanagement.exception.KeyNotFoundException;
 import com.keymanagement.model.EncryptedData;
+ import com.keymanagement.model.EncryptionAlgorithm;
 import com.keymanagement.repository.KeyRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import javax.crypto.SecretKey;
+import javax.crypto.spec.SecretKeySpec;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
@@ -49,16 +54,14 @@ class KeyRotationServiceTest {
                 "key-uuid-1",
                 "logical-key-1",
                 1,
-                new byte[]{1, 2, 3, 4},
+                new byte[32],
                 "AES",
                 256
         );
         mockCurrentVersion.setCreatedAt(LocalDateTime.now());
         mockCurrentVersion.setCurrentVersion(true);
 
-        mockSecretKey = mock(SecretKey.class);
-        when(mockSecretKey.getEncoded()).thenReturn(new byte[]{5, 6, 7, 8});
-        when(mockSecretKey.getAlgorithm()).thenReturn("AES");
+        mockSecretKey = new SecretKeySpec(new byte[32], "AES");
     }
 
     @Test
@@ -67,11 +70,12 @@ class KeyRotationServiceTest {
         String logicalKeyId = "logical-key-1";
         RotateKeyRequest request = new RotateKeyRequest("Scheduled rotation");
 
+        when(keyRepository.lockInitialVersion(logicalKeyId)).thenReturn(Optional.of(mockCurrentVersion));
         when(keyRepository.findByLogicalKeyIdAndCurrentVersionTrueAndActiveTrue(logicalKeyId))
                 .thenReturn(Optional.of(mockCurrentVersion));
         when(keyRepository.findMaxVersionByLogicalKeyId(logicalKeyId))
                 .thenReturn(1);
-        when(cryptoService.generateKey()).thenReturn(mockSecretKey);
+        when(cryptoService.generateKey(EncryptionAlgorithm.AES_256_GCM)).thenReturn(mockSecretKey);
         when(keyRepository.save(any(KeyEntity.class))).thenAnswer(i -> i.getArguments()[0]);
 
         // Act
@@ -93,13 +97,42 @@ class KeyRotationServiceTest {
         verify(keyRepository, times(2)).save(any(KeyEntity.class));
     }
 
+        @ParameterizedTest
+        @EnumSource(EncryptionAlgorithm.class)
+        void testRotateKey_PreservesAlgorithmAndKeySize(EncryptionAlgorithm algorithm) {
+                CryptoService realCryptoService = spy(new CryptoService());
+                SecretKey originalKey = realCryptoService.generateKey(algorithm);
+                clearInvocations(realCryptoService);
+                KeyEntity original = new KeyEntity("physical-key", "logical-key", 1,
+                                originalKey.getEncoded(), originalKey.getAlgorithm(), algorithm.getKeySize());
+                when(keyRepository.lockInitialVersion("logical-key")).thenReturn(Optional.of(original));
+                when(keyRepository.findByLogicalKeyIdAndCurrentVersionTrueAndActiveTrue("logical-key"))
+                                .thenReturn(Optional.of(original));
+                when(keyRepository.findMaxVersionByLogicalKeyId("logical-key")).thenReturn(1);
+                KeyRotationService service = new KeyRotationService(keyRepository, realCryptoService, keyStorageService);
+
+                service.rotateKey("logical-key", null);
+
+                ArgumentCaptor<KeyEntity> savedKeys = ArgumentCaptor.forClass(KeyEntity.class);
+                verify(keyRepository, times(2)).save(savedKeys.capture());
+                KeyEntity rotated = savedKeys.getAllValues().getLast();
+                assertEquals(algorithm.getAlgorithm(), rotated.getAlgorithm());
+                assertEquals(algorithm.getKeySize(), rotated.getKeySize());
+                assertEquals(algorithm.getKeySizeBytes(), rotated.getKeyMaterial().length);
+                assertFalse(Arrays.equals(originalKey.getEncoded(), rotated.getKeyMaterial()));
+                assertFalse(original.getCurrentVersion());
+                assertTrue(original.getActive());
+                assertTrue(rotated.getCurrentVersion());
+                verify(realCryptoService).generateKey(algorithm);
+        }
+
     @Test
     void testRotateKey_KeyNotFound() {
         // Arrange
         String logicalKeyId = "non-existent-key";
         RotateKeyRequest request = new RotateKeyRequest();
 
-        when(keyRepository.findByLogicalKeyIdAndCurrentVersionTrueAndActiveTrue(logicalKeyId))
+        when(keyRepository.lockInitialVersion(logicalKeyId))
                 .thenReturn(Optional.empty());
 
         // Act & Assert

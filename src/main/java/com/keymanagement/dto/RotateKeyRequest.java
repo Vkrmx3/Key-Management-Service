@@ -1,10 +1,13 @@
 package com.keymanagement.dto;
 
+import jakarta.validation.constraints.Size;
+
 /**
  * Request DTO for key rotation.
  */
 public class RotateKeyRequest {
 
+    @Size(max = 500, message = "Rotation reason must not exceed 500 characters")
     private String reason;
 
     // Constructors

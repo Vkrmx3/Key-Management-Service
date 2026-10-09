@@ -1,5 +1,6 @@
 package com.keymanagement.service;
 
+import com.keymanagement.exception.DecryptionException;
 import com.keymanagement.model.EncryptedData;
 import com.keymanagement.model.EncryptionAlgorithm;
 import org.junit.jupiter.api.BeforeEach;
@@ -7,6 +8,7 @@ import org.junit.jupiter.api.Test;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -188,5 +190,39 @@ class CryptoServiceMultiAlgorithmTest {
                                                 encrypted.getNonce(), EncryptionAlgorithm.AES_256_GCM);
 
         assertEquals(0, decrypted.length);
+    }
+
+    @Test
+    void testChaCha20Poly1305_UsesFreshNoncesAndAuthenticationTags() {
+        SecretKey key = cryptoService.generateKey(EncryptionAlgorithm.CHACHA20_POLY1305);
+        byte[] plaintext = "Authenticated ChaCha20 data".getBytes(StandardCharsets.UTF_8);
+
+        EncryptedData first = cryptoService.encrypt(key, plaintext);
+        EncryptedData second = cryptoService.encrypt(key, plaintext);
+
+        assertEquals(32, key.getEncoded().length);
+        assertEquals(12, first.getNonce().length);
+        assertEquals(plaintext.length + 16, first.getCiphertext().length);
+        assertFalse(Arrays.equals(first.getNonce(), second.getNonce()));
+        assertArrayEquals(plaintext, cryptoService.decrypt(key, first.getCiphertext(), first.getNonce()));
+        assertArrayEquals(plaintext, cryptoService.decrypt(key, second.getCiphertext(), second.getNonce()));
+    }
+
+    @Test
+    void testChaCha20Poly1305_RejectsTamperingAndWrongKeys() {
+        SecretKey key = cryptoService.generateKey(EncryptionAlgorithm.CHACHA20_POLY1305);
+        EncryptedData encrypted = cryptoService.encrypt(key, "Protected data".getBytes(StandardCharsets.UTF_8));
+        byte[] tamperedCiphertext = encrypted.getCiphertext().clone();
+        tamperedCiphertext[0] ^= 1;
+        byte[] tamperedNonce = encrypted.getNonce().clone();
+        tamperedNonce[0] ^= 1;
+        SecretKey wrongKey = cryptoService.generateKey(EncryptionAlgorithm.CHACHA20_POLY1305);
+
+        assertThrows(DecryptionException.class,
+                () -> cryptoService.decrypt(key, tamperedCiphertext, encrypted.getNonce()));
+        assertThrows(DecryptionException.class,
+                () -> cryptoService.decrypt(key, encrypted.getCiphertext(), tamperedNonce));
+        assertThrows(DecryptionException.class,
+                () -> cryptoService.decrypt(wrongKey, encrypted.getCiphertext(), encrypted.getNonce()));
     }
 }

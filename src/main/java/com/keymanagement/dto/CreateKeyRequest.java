@@ -1,5 +1,7 @@
 package com.keymanagement.dto;
 
+import jakarta.validation.constraints.Size;
+
 /**
  * Request DTO for creating a new encryption key.
  * All fields are optional with sensible defaults.
@@ -16,6 +18,7 @@ public class CreateKeyRequest {
     /**
      * Optional description for the key.
      */
+    @Size(max = 500, message = "Description must not exceed 500 characters")
     private String description;
 
     // Constructors

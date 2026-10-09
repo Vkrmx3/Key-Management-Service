@@ -8,7 +8,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.5.0</version>
+        <version>3.5.16</version>
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
 
@@ -23,6 +23,10 @@
         <maven.compiler.source>25</maven.compiler.source>
         <maven.compiler.target>25</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <!-- CVE remediation: override BOM-managed versions still flagged after Spring Boot 3.5.16 -->
+        <tomcat.version>10.1.60</tomcat.version>
+        <jackson-bom.version>2.21.5</jackson-bom.version>
+        <postgresql.version>42.7.12</postgresql.version>
     </properties>
 
     <dependencies>
@@ -57,11 +61,36 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- H2 Database - for testing -->
+        <!-- H2 Database - for testing only -->
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
             <scope>test</scope>
+        </dependency>
+
+        <!-- Spring Security -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+
+        <!-- JWT Dependencies -->
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-api</artifactId>
+            <version>0.12.6</version>
+        </dependency>
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-impl</artifactId>
+            <version>0.12.6</version>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-jackson</artifactId>
+            <version>0.12.6</version>
+            <scope>runtime</scope>
         </dependency>
 
         <!-- Spring Boot DevTools - for automatic restart and LiveReload -->
@@ -76,6 +105,13 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Spring Security Test -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -99,6 +135,62 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.2.5</version>
+            </plugin>
+
+            <!-- JaCoCo for code coverage -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>0.8.13</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- OWASP Dependency Check for vulnerability scanning -->
+            <plugin>
+                <groupId>org.owasp</groupId>
+                <artifactId>dependency-check-maven</artifactId>
+                <version>9.0.0</version>
+                <configuration>
+                    <failBuildOnCVSS>7</failBuildOnCVSS>
+                    <suppressionFile>dependency-check-suppressions.xml</suppressionFile>
+                    <!-- NVD API Key (optional, set via environment variable) -->
+                    <nvdApiKey>${env.NVD_API_KEY}</nvdApiKey>
+                    <!-- Don't fail when NVD data update fails (better for CI/CD) -->
+                    <failOnError>false</failOnError>
+                    <!-- Use cached data if update fails -->
+                    <autoUpdate>false</autoUpdate>
+                    <!-- Retry settings for NVD API -->
+                    <nvdMaxRetryCount>3</nvdMaxRetryCount>
+                    <nvdApiDelay>2000</nvdApiDelay>
+                </configuration>
+            </plugin>
+
+            <!-- CycloneDX for SBOM generation -->
+            <plugin>
+                <groupId>org.cyclonedx</groupId>
+                <artifactId>cyclonedx-maven-plugin</artifactId>
+                <version>2.7.10</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>makeAggregateBom</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

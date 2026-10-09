@@ -1,5 +1,6 @@
 package com.keymanagement.dto;
 
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 
 /**
@@ -13,6 +14,7 @@ public class ReEncryptRequest {
     @NotBlank(message = "Nonce is required")
     private String nonce;
 
+    @Min(value = 1, message = "Source version must be at least 1")
     private Integer sourceVersion;
 
     // Constructors

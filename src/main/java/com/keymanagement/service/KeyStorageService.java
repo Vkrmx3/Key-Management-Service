@@ -1,16 +1,19 @@
 package com.keymanagement.service;
 
-import com.keymanagement.entity.KeyEntity;
-import com.keymanagement.exception.KeyNotFoundException;
-import com.keymanagement.repository.KeyRepository;
+import java.util.UUID;
+
+import javax.crypto.SecretKey;
+import javax.crypto.spec.SecretKeySpec;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import javax.crypto.SecretKey;
-import javax.crypto.spec.SecretKeySpec;
-import java.util.UUID;
+import com.keymanagement.entity.KeyEntity;
+import com.keymanagement.exception.KeyNotFoundException;
+import com.keymanagement.repository.KeyRepository;
+import com.keymanagement.security.LogSanitizer;
 
 /**
  * Service for storing and retrieving encryption keys in PostgreSQL database.
@@ -35,6 +38,11 @@ public class KeyStorageService {
      */
     @Transactional
     public String storeKey(SecretKey key) {
+        return storeKey(key, null);
+    }
+
+    @Transactional
+    public String storeKey(SecretKey key, String description) {
         String keyId = UUID.randomUUID().toString();
         
         KeyEntity keyEntity = new KeyEntity(
@@ -43,6 +51,7 @@ public class KeyStorageService {
                 key.getAlgorithm(),
                 key.getEncoded().length * 8 // key size in bits
         );
+            keyEntity.setDescription(description);
         
         keyRepository.save(keyEntity);
         long totalKeys = keyRepository.countByActiveTrue();
@@ -62,20 +71,34 @@ public class KeyStorageService {
      */
     @Transactional(readOnly = true)
     public SecretKey getKey(String keyId) {
-        log.debug("Retrieving key with ID: {}", keyId);
-        
-        // Try exact keyId match first (for backward compatibility and specific versions)
+        log.debug("Retrieving key with ID: {}", LogSanitizer.sanitize(keyId));
         KeyEntity keyEntity = keyRepository.findByKeyIdAndActiveTrue(keyId)
                 .orElseGet(() -> {
                     // If not found by keyId, try as logical key ID (get current version)
                     return keyRepository.findByLogicalKeyIdAndCurrentVersionTrueAndActiveTrue(keyId)
                             .orElseThrow(() -> {
-                                log.warn("Key not found or inactive: {}", keyId);
+                    log.warn("Key not found or inactive: {}", LogSanitizer.sanitize(keyId));
                                 return new KeyNotFoundException(keyId);
                             });
                 });
         
         return new SecretKeySpec(keyEntity.getKeyMaterial(), keyEntity.getAlgorithm());
+    }
+
+    @Transactional(readOnly = true)
+    public String getCurrentKeyId(String keyId) {
+        return keyRepository.findByLogicalKeyIdAndCurrentVersionTrueAndActiveTrue(keyId)
+                .map(KeyEntity::getKeyId)
+                .orElseGet(() -> {
+                    KeyEntity physicalKey = keyRepository.findByKeyIdAndActiveTrue(keyId)
+                            .orElseThrow(() -> new KeyNotFoundException(keyId));
+                    if (Boolean.TRUE.equals(physicalKey.getCurrentVersion())) {
+                        return physicalKey.getKeyId();
+                    }
+                    return keyRepository.findByLogicalKeyIdAndCurrentVersionTrueAndActiveTrue(physicalKey.getLogicalKeyId())
+                            .map(KeyEntity::getKeyId)
+                            .orElseThrow(() -> new KeyNotFoundException(keyId));
+                });
     }
 
     /**
